@@ -2,15 +2,20 @@
  * @file image.hpp
  * @author Andrew Hilton - andrew.hilton@usu.edu
  * @brief
- * @version 2.0 (@LastMod : 2026/10/06 15:43:38)
+ * @version 2.0 (@LastMod : 2026/10/06 16:06:26)
  * @date 2026-10-04
  *
  * @copyright Copyright (c) 2026
  *
  */
 
+#include <algorithm>
 #include <array>
+#include <cstdint>
 #include <iostream>
+#include <memory>
+#include <stdexcept>
+#include <utility>
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
@@ -28,9 +33,11 @@ class Image
  public:
   Image(const char* filename, int* bpp = nullptr)
   {
+    int sourceWidth = 0, sourceHeight = 0;
+
     // Get Raw Data
     stbi_uc* decodedData =
-        stbi_load(filename, nullptr, nullptr, bpp, readChannels);
+        stbi_load(filename, &sourceWidth, &sourceHeight, bpp, readChannels);
 
     // If there is no data, then print image load error and return nothing.
     if (!decodedData)
@@ -39,14 +46,23 @@ class Image
       return;
     }
 
+    if (sourceWidth != width || sourceHeight != height)
+    {
+      std::cerr << "Image dimensions do not match the Image type: "
+                << sourceWidth << "x" << sourceHeight << std::endl;
+      stbi_image_free(decodedData);
+      return;
+    }
+
     for (std::size_t y = 0; y < height; ++y)
     {
       for (std::size_t x = 0; x < width; ++x)
       {
         const std::size_t index = (y * width + x) * readChannels;
-        data[x][y] = (decodedData[index] * 114 + decodedData[index + 1] * 587 +
-                      decodedData[index + 2] * 299) /
-                     1000;
+        data[y * width + x] =
+            (decodedData[index] * 114 + decodedData[index + 1] * 587 +
+             decodedData[index + 2] * 299) /
+            1000;
       }
     }
     // Free the decoded data
@@ -98,52 +114,57 @@ class Image
     return Image<selectionWidth, selectionHeight>(std::move(selectionData));
   }
 
-  void save_png(const char* filename, int channels) const
+  void save_png(const char* filename) const
   {
-    if (!data)
-    {
-      std::cerr << "No image data to save." << std::endl;
-      return;
-    }
+    auto rgba =
+        std::make_unique<std::array<std::uint8_t, width * height * 4>>();
+    toRgba(*rgba);
 
-    if (stbi_write_png(
-            filename, width, height, channels, data.get(), width * channels) ==
+    if (stbi_write_png(filename, width, height, 4, rgba->data(), width * 4) ==
         0)
     {
       std::cerr << "Failed to save image: " << filename << std::endl;
     }
   }
 
-  void save_jpg(const char* filename, int channels, int quality = 90) const
+  void save_jpg(const char* filename, int quality = 90) const
   {
-    if (!data)
-    {
-      std::cerr << "No image data to save." << std::endl;
-      return;
-    }
+    auto rgba =
+        std::make_unique<std::array<std::uint8_t, width * height * 4>>();
+    toRgba(*rgba);
 
-    if (stbi_write_jpg(
-            filename, width, height, channels, data.get(), quality) == 0)
+    if (stbi_write_jpg(filename, width, height, 4, rgba->data(), quality) == 0)
     {
       std::cerr << "Failed to save image: " << filename << std::endl;
     }
   }
 
-  void save_bmp(const char* filename, int channels) const
+  void save_bmp(const char* filename) const
   {
-    if (!data)
-    {
-      std::cerr << "No image data to save." << std::endl;
-      return;
-    }
+    auto rgba =
+        std::make_unique<std::array<std::uint8_t, width * height * 4>>();
+    toRgba(*rgba);
 
-    if (stbi_write_bmp(filename, width, height, channels, data.get()) == 0)
+    if (stbi_write_bmp(filename, width, height, 4, rgba->data()) == 0)
     {
       std::cerr << "Failed to save image: " << filename << std::endl;
     }
   }
 
  private:
+  void toRgba(std::array<std::uint8_t, width * height * 4>& rgba) const
+  {
+    for (std::size_t i = 0; i < data.size(); ++i)
+    {
+      const auto value =
+          static_cast<std::uint8_t>(std::clamp(data[i], 0.0f, 255.0f));
+      rgba[i * 4] = value;
+      rgba[i * 4 + 1] = value;
+      rgba[i * 4 + 2] = value;
+      rgba[i * 4 + 3] = 255;
+    }
+  }
+
   std::size_t checkedIndex(std::size_t x, std::size_t y) const
   {
     if (x >= width || y >= height)
