@@ -1,0 +1,26 @@
+{
+  "editor.formatOnSave": true,
+  "editor.fontLigatures": true,
+  "editor.fontFamily": "Fira Code",
+  "doxdocgen.generic.authorEmail": "andrew.hilton@usu.edu",
+  "doxdocgen.generic.authorTag": "@author {author} - {email}",
+  "doxdocgen.generic.authorName": "Andrew Hilton",
+  "doxdocgen.generic.generateSmartText": true,
+  "doxdocgen.generic.dateFormat": "YYYY-MM-DD",
+  "doxdocgen.file.versionTag": "@version 1.0 (@LastMod : )",
+  "emeraldwalk.runonsave": {
+    "commands": [
+      {
+        "match": "\\.(cpp|h|c|hpp)$",
+        "isAsync": false,
+        "cmd": "sed -i -E 's/(@LastMod\\s+).*/\\1'\": $(date '+%Y\\/%m\\/%d %H:%M:%S'))\"'/g' \"${file}\""
+      }
+    ]
+  },
+  "clangd.arguments": [
+    "--compile-commands-dir=${workspaceFolder}"
+  ],
+  "cSpell.words": [
+    "stbi"
+  ],
+}
