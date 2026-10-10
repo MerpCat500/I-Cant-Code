@@ -2,7 +2,7 @@
  * @file image.hpp
  * @author Andrew Hilton - andrew.hilton@usu.edu
  * @brief
- * @version 2.0 (@LastMod : 2026/10/06 16:06:26)
+ * @version 2.0 (@LastMod : 2026/10/09 18:21:26)
  * @date 2026-10-04
  *
  * @copyright Copyright (c) 2026
@@ -13,7 +13,6 @@
 #include <array>
 #include <cstdint>
 #include <iostream>
-#include <memory>
 #include <stdexcept>
 #include <utility>
 
@@ -27,8 +26,10 @@ template <std::size_t width, std::size_t height>
 class Image
 {
  private:
-  std::array<float, width * height> data{};
+  std::array<std::uint8_t, width * height> data{};
   constexpr static size_t readChannels = 4;  // RGBA
+  constexpr static size_t writeChannels = 1;  // Grayscale
+
 
  public:
   Image(const char* filename, int* bpp = nullptr)
@@ -69,9 +70,9 @@ class Image
     stbi_image_free(decodedData);
   }
 
-  Image(std::array<float, width * height> data) : data(std::move(data)) {}
+  Image(std::array<std::uint8_t, width * height> data) : data(std::move(data)) {}
 
-  Image(const float fillColor) : data() { data.fill(fillColor); }
+  Image(const std::uint8_t fillColor) : data() { data.fill(fillColor); }
 
   Image() : data() {}
 
@@ -83,13 +84,13 @@ class Image
   constexpr std::size_t getWidth() const { return width; }
   constexpr std::size_t getHeight() const { return height; }
 
-  float& operator()(std::size_t x, std::size_t y)
+  std::uint8_t& operator()(std::size_t x, std::size_t y)
   { return data[checkedIndex(x, y)]; }
 
-  const float& operator()(std::size_t x, std::size_t y) const
+  const std::uint8_t& operator()(std::size_t x, std::size_t y) const
   { return data[checkedIndex(x, y)]; }
 
-  const float& getPixel(std::size_t x, std::size_t y) const
+  const std::uint8_t& getPixel(std::size_t x, std::size_t y) const
   { return (*this)(x, y); }
 
   template <std::size_t selectionWidth, std::size_t selectionHeight>
@@ -101,7 +102,7 @@ class Image
       throw std::out_of_range("Selection is outside the image");
     }
 
-    std::array<float, selectionWidth * selectionHeight> selectionData{};
+    std::array<std::uint8_t, selectionWidth * selectionHeight> selectionData{};
 
     for (std::size_t j = 0; j < selectionHeight; ++j)
     {
@@ -111,16 +112,12 @@ class Image
       }
     }
 
-    return Image<selectionWidth, selectionHeight>(std::move(selectionData));
+    return Image<selectionWidth, selectionHeight>(selectionData);
   }
 
   void save_png(const char* filename) const
   {
-    auto rgba =
-        std::make_unique<std::array<std::uint8_t, width * height * 4>>();
-    toRgba(*rgba);
-
-    if (stbi_write_png(filename, width, height, 4, rgba->data(), width * 4) ==
+    if (stbi_write_png(filename, width, height, writeChannels, data.data(), width * writeChannels ) ==
         0)
     {
       std::cerr << "Failed to save image: " << filename << std::endl;
@@ -129,11 +126,7 @@ class Image
 
   void save_jpg(const char* filename, int quality = 90) const
   {
-    auto rgba =
-        std::make_unique<std::array<std::uint8_t, width * height * 4>>();
-    toRgba(*rgba);
-
-    if (stbi_write_jpg(filename, width, height, 4, rgba->data(), quality) == 0)
+    if (stbi_write_jpg(filename, width, height, writeChannels, data.data(), quality) == 0)
     {
       std::cerr << "Failed to save image: " << filename << std::endl;
     }
@@ -141,29 +134,13 @@ class Image
 
   void save_bmp(const char* filename) const
   {
-    auto rgba =
-        std::make_unique<std::array<std::uint8_t, width * height * 4>>();
-    toRgba(*rgba);
-
-    if (stbi_write_bmp(filename, width, height, 4, rgba->data()) == 0)
+    if (stbi_write_bmp(filename, width, height, writeChannels, data.data()) == 0)
     {
       std::cerr << "Failed to save image: " << filename << std::endl;
     }
   }
 
  private:
-  void toRgba(std::array<std::uint8_t, width * height * 4>& rgba) const
-  {
-    for (std::size_t i = 0; i < data.size(); ++i)
-    {
-      const auto value =
-          static_cast<std::uint8_t>(std::clamp(data[i], 0.0f, 255.0f));
-      rgba[i * 4] = value;
-      rgba[i * 4 + 1] = value;
-      rgba[i * 4 + 2] = value;
-      rgba[i * 4 + 3] = 255;
-    }
-  }
 
   std::size_t checkedIndex(std::size_t x, std::size_t y) const
   {
