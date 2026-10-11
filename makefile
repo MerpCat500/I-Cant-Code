@@ -21,8 +21,8 @@ $(TARGET): $(OBJECTS)
 build/%.o: src/%.cpp
 	mkdir -p $(dir $@)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
-	@printf '{"directory":"%s","file":"%s","arguments":["%s","%s","%s","-c","%s","-o","%s"]}\n' \
-		"$(CURDIR)" "$<" "$(CXX)" "$(CPPFLAGS)" "$(CXXFLAGS)" "$<" "$@" > $(@:.o=.json)
+	@printf '{"directory":"%s","file":"%s","arguments":["%s","%s","-std=c++17","-Wall","-Wextra","-Wno-missing-field-initializers","-O2","-c","%s","-o","%s"]}\n' \
+		"$(CURDIR)" "$<" "$(CXX)" "$(CPPFLAGS)" "$<" "$@" > $(@:.o=.json)
 
 compile_commands.json: $(OBJECTS)
 	@{ \
