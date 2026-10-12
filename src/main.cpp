@@ -6,13 +6,13 @@
 
 int main()
 {
-  auto image = std::make_unique<Image<3648, 1640>>("image.jpg");
+  auto image = std::make_unique<Image<4032, 2268>>("image.jpg");
 
   image->save_jpg("grey-image.jpg");
 
   while (true)
   {
-    auto extremes = std::make_unique<Image<3648, 1640>>();
+    auto extremes = std::make_unique<Image<4032, 2268>>();
     std::cout << "Enter a threshold value for FAST feature detection (or "
                  "'exit' to quit): "
               << std::flush;
@@ -30,7 +30,7 @@ int main()
 
     std::chrono::high_resolution_clock::time_point startTime =
         std::chrono::high_resolution_clock::now();
-        
+
     image->getFeaturesFAST(*image, *extremes, std::stoi(input));
     extremes->save_png("extremes.png");
 
