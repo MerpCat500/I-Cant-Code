@@ -2,12 +2,14 @@
  * @file image.hpp
  * @author Andrew Hilton - andrew.hilton@usu.edu
  * @brief
- * @version 2.0 (@LastMod : 2026/10/10 20:59:12)
+ * @version 2.0 (@LastMod : 2026/10/12 14:51:09)
  * @date 2026-10-04
  *
  * @copyright Copyright (c) 2026
  *
  */
+
+#pragma once
 
 #include <algorithm>
 #include <array>
@@ -294,12 +296,13 @@ class Image
         std::uint8_t& outputPixel = outputBuffer(x, y);
         const std::uint8_t& inputPixel = inputBuffer(x, y);
 
+        std::size_t isExtreme = 0;
+
         for (auto offset : fastOffsets)
         {
           int neighborX = static_cast<int>(x) + offset.first;
           int neighborY = static_cast<int>(y) + offset.second;
 
-          bool isExtreme = true;
           if (neighborX < static_cast<int>(width) &&
               neighborY < static_cast<int>(height) && neighborX >= 0 &&
               neighborY >= 0)
@@ -309,16 +312,14 @@ class Image
 
             if (std::abs(
                     static_cast<int>(inputPixel) -
-                    static_cast<int>(neighborPixel)) < threshold)
+                    static_cast<int>(neighborPixel)) > threshold)
             {
-              isExtreme = false;
-              break;
+              isExtreme++;
             }
           }
-
-          if (isExtreme)
+          if (isExtreme >= 12)
           {
-            outputPixel = inputPixel;  // Mark as a feature
+            outputPixel = 255;  // Mark as a feature
             break;
           }
         }
