@@ -2,7 +2,7 @@
 #include <chrono>
 #include <memory>
 
-#include "imagev2.hpp"
+#include "image.hpp"
 
 int main()
 {

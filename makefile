@@ -1,6 +1,10 @@
 CXX := g++
 CXXFLAGS := -std=c++17 -Wall -Wextra -Wno-missing-field-initializers -O2
 CPPFLAGS := -Iinclude
+V4L2_CFLAGS := $(shell pkg-config --cflags libv4l2)
+V4L2_LIBS := $(shell pkg-config --libs libv4l2)
+CPPFLAGS += $(V4L2_CFLAGS)
+LDLIBS += $(V4L2_LIBS)
 MAKEFLAGS += -j$(shell nproc)
 
 SOURCES := $(wildcard src/*.cpp)
