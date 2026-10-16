@@ -2,7 +2,7 @@
  * @file image.hpp
  * @author Andrew Hilton - andrew.hilton@usu.edu
  * @brief
- * @version 2.0 (@LastMod : 2026/10/12 14:51:09)
+ * @version 2.0 (@LastMod : 2026/10/15 22:52:09)
  * @date 2026-10-04
  *
  * @copyright Copyright (c) 2026
@@ -17,8 +17,9 @@
 #include <iostream>
 #include <stdexcept>
 #include <utility>
+#include <vector>
 
-#include "kernal.hpp"
+#include "kernel.hpp"
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
@@ -36,22 +37,22 @@ class Image
   // Note: The offsets are ordered to maximize the chance of early termination
   // in the FAST algorithm.
   constexpr static std::array<std::pair<int, int>, 16> fastOffsets = {{
-      {0, 3},    // Above Center
-      {0, -3},   // Below Center
-      {3, 0},    // Right Center
-      {-3, 0},   // Left Center
-      {2, 2},    // Diagonal Center Above Right
-      {2, -2},   // Diagonal Center Below Right
-      {-2, 2},   // Diagonal Center Above Left
-      {-2, -2},  // Diagonal Center Below Left
-      {1, 3},    // Above Center Slight Right
-      {-1, 3},   // Above Center Slight Left
-      {3, 1},    // Right Center Slight Above
-      {3, -1},   // Right Center Slight Below
-      {1, -3},   // Below Center Slight Right
-      {-1, -3},  // Below Center Slight Left
-      {-3, 1},   // Left Center Slight Above
-      {-3, -1},  // Left Center Slight Below
+      {0, -3},   //  0: top
+      {1, -3},   //  1: top-right slight
+      {2, -2},   //  2: upper-right
+      {3, -1},   //  3: right-upper slight
+      {3, 0},    //  4: right
+      {3, 1},    //  5: right-lower slight
+      {2, 2},    //  6: lower-right
+      {1, 3},    //  7: bottom-right slight
+      {0, 3},    //  8: bottom
+      {-1, 3},   //  9: bottom-left slight
+      {-2, 2},   // 10: lower-left
+      {-3, 1},   // 11: left-lower slight
+      {-3, 0},   // 12: left
+      {-3, -1},  // 13: left-upper slight
+      {-2, -2},  // 14: upper-left
+      {-1, -3},  // 15: top-left slight
   }};
 
  public:
@@ -216,6 +217,25 @@ class Image
     }
   }
 
+  Image frobeniusInnerProduct(const Image& B) const
+  {
+    Image outputImage;
+
+    for (std::size_t y = 0; y < height; ++y)
+    {
+      for (std::size_t x = 0; x < width; ++x)
+      {
+        const std::uint8_t& lhsPixel = (*this)(x, y);
+        const std::uint8_t& rhsPixel = B(x, y);
+        std::uint8_t& outputPixel = outputImage(x, y);
+
+        outputPixel = static_cast<std::uint8_t>(
+            std::clamp(static_cast<int>(lhsPixel) * rhsPixel, 0, 255));
+      }
+    }
+    return outputImage;
+  }
+
   Image operator*(const float B) const
   {
     Image outputImage;
@@ -272,12 +292,56 @@ class Image
     return outputImage;
   }
 
-  template <std::size_t kernalSize, typename kernalType = float>
-  static void convolve(
-      const Image& inputBuffer,
-      Image& outputBuffer,
-      const Kernal<kernalType, kernalSize>& kernal)
+  template <std::size_t kernelSize, typename kernelType = float>
+  static Image<width - kernelSize + 1, height - kernelSize + 1> convolve(
+      const Image& inputBuffer, const Kernel<kernelType, kernelSize>& kernel)
   {
+    static_assert(kernelSize > 0, "The kernel size must be greater than zero");
+    static_assert(
+        kernelSize <= width && kernelSize <= height,
+        "The kernel must fit inside the input image");
+
+    Image<width - kernelSize + 1, height - kernelSize + 1> outputBuffer;
+    constexpr std::size_t outputWidth = width - kernelSize + 1;
+    constexpr std::size_t outputHeight = height - kernelSize + 1;
+
+    const auto& horizontalKernel = kernel.getInner();
+    const auto& verticalKernel = kernel.getOuter();
+    std::vector<long double> horizontalPass(outputWidth * height, 0.0L);
+
+    for (std::size_t y = 0; y < height; ++y)
+    {
+      for (std::size_t x = 0; x < outputWidth; ++x)
+      {
+        long double horizontalSum = 0.0L;
+        for (std::size_t column = 0; column < kernelSize; ++column)
+        {
+          horizontalSum +=
+              static_cast<long double>(inputBuffer(x + column, y)) *
+              static_cast<long double>(horizontalKernel[column]);
+        }
+        horizontalPass[y * outputWidth + x] = horizontalSum;
+      }
+    }
+
+    for (std::size_t outputY = 0; outputY < outputHeight; ++outputY)
+    {
+      for (std::size_t outputX = 0; outputX < outputWidth; ++outputX)
+      {
+        long double convolutionResult = 0.0L;
+        for (std::size_t row = 0; row < kernelSize; ++row)
+        {
+          convolutionResult +=
+              horizontalPass[(outputY + row) * outputWidth + outputX] *
+              static_cast<long double>(verticalKernel[row]);
+        }
+
+        outputBuffer(outputX, outputY) = static_cast<std::uint8_t>(
+            std::clamp(convolutionResult, 0.0L, 255.0L));
+      }
+    }
+
+    return outputBuffer;
   }
 
   /**
@@ -287,7 +351,8 @@ class Image
   static void getFeaturesFAST(
       const Image<width, height>& inputBuffer,
       Image<width, height>& outputBuffer,
-      const std::size_t threshold)
+      const std::size_t threshold,
+      const std::size_t consecutivePixels = 12)
   {
     for (std::size_t y = 0; y < height; ++y)
     {
@@ -297,6 +362,10 @@ class Image
         const std::uint8_t& inputPixel = inputBuffer(x, y);
 
         std::size_t isExtreme = 0;
+        std::size_t firstConsecutivePixels = 0;
+        bool firstConsecutivePixelsSet = false;
+        bool lastBrighter = true;
+        bool lastDarker = true;
 
         for (auto offset : fastOffsets)
         {
@@ -310,18 +379,42 @@ class Image
             const std::uint8_t& neighborPixel =
                 inputBuffer(neighborX, neighborY);
 
-            if (std::abs(
-                    static_cast<int>(inputPixel) -
-                    static_cast<int>(neighborPixel)) > threshold)
+            bool isBrighter = neighborPixel > static_cast<int>(inputPixel) +
+                                                  static_cast<int>(threshold);
+            bool isDarker = neighborPixel < static_cast<int>(inputPixel) -
+                                                static_cast<int>(threshold);
+            bool isNotExtreme =
+                !(isBrighter && lastBrighter) && !(isDarker && lastDarker);
+
+            if (isBrighter && lastBrighter) { ++isExtreme; }
+            else if (isDarker && lastDarker) { ++isExtreme; }
+            else if (isNotExtreme && !firstConsecutivePixelsSet)
             {
-              isExtreme++;
+              firstConsecutivePixels = isExtreme;
+              firstConsecutivePixelsSet = true;
             }
+            else
+            {
+              isExtreme = 0;
+            }
+
+            lastBrighter = isBrighter;
+            lastDarker = isDarker;
           }
-          if (isExtreme >= 12)
+
+          if (offset == fastOffsets.back())
           {
-            outputPixel = 255;  // Mark as a feature
+            isExtreme +=
+                firstConsecutivePixels;  // Wrap around to the first pixels
+          }
+
+          if (isExtreme >= consecutivePixels)
+          {
+            outputPixel = 255;
             break;
           }
+
+          outputPixel = 255 / 16 * isExtreme;
         }
       }
     }
