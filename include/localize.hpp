@@ -2,7 +2,7 @@
  * @file localize.hpp
  * @author Andrew Hilton - andrew.hilton@usu.edu
  * @brief Classes for localizing from cameras
- * @version 1.0 (@LastMod : 2026/10/15 22:54:37)
+ * @version 1.0 (@LastMod : 2026/10/15 23:47:24)
  * @date 2026-10-15
  *
  * @copyright Copyright (c) 2026
@@ -23,8 +23,7 @@ class StereoCamera
   VideoCamera<width, height> rightCamera;
 
  public:
-  StereoCamera(
-      const std::string& leftCameraPath, const std::string& rightCameraPath)
+  StereoCamera(const std::string& leftCameraPath, const std::string& rightCameraPath)
       : leftCamera(leftCameraPath), rightCamera(rightCameraPath)
   {
   }
@@ -46,47 +45,60 @@ class StereoCamera
     return {std::move(leftFrame), std::move(rightFrame)};
   }
 
-  Image<width, height> getErrorFrame(std::size_t threshold)
+  template <std::size_t selectionSize>
+  Image<width, height>& getErrorFrame(std::size_t threshold)
   {
     std::array<Image<width, height>, 2> frames = getFrames();
     std::array<Image<width, height>, 3> outputBuffers = {
         Image<width, height>(), Image<width, height>(), Image<width, height>()};
 
-    for (std::size_t i = 0; i < 2; ++i)
+    std::size_t selectionSizeHalf = selectionSize / 2;
+
+    for (std::size_t i = 0; i < frames.size(); ++i)
     {
-      Image<width, height>::getFeaturesFAST(
-          frames[i], outputBuffers[i], threshold);
+      Image<width, height>::getFeaturesFAST(frames[i], outputBuffers[i], threshold);
     }
 
-    for (std::size_t y = 0; y < height; ++y)
+    for (std::size_t y = selectionSizeHalf; y < height - selectionSizeHalf; ++y)
     {
-      for (std::size_t x = 0; x < width; ++x)
+      for (std::size_t x = selectionSizeHalf; x < width - selectionSizeHalf; ++x)
       {
         std::uint8_t leftPixel = outputBuffers[0](x, y);
 
-        Image leftSelection = outputBuffers[0].getSelection<3, 3>(x, y);
+        const auto& leftSelection =
+            outputBuffers[0].template getSelection<selectionSize, selectionSize>(x, y);
 
         if (leftPixel > 0)
         {
-          for (std::size_t j = 0; j < width; ++j)
+          for (std::size_t j = selectionSizeHalf; j < width - selectionSizeHalf; ++j)
           {
             std::uint8_t rightPixel = outputBuffers[1](j, y);
             if (rightPixel > 0)
             {
-              Image rightSelection = outputBuffers[1].getSelection<3, 3>(j, y);
+              const auto& rightSelection =
+                  outputBuffers[1].template getSelection<selectionSize, selectionSize>(j, y);
 
-              auto error =
-                  (leftSelection - rightSelection)
-                      .frobeniusInnerProduct(leftSelection - rightSelection) *
-                  1.0 / 9.0;
+              auto error = Image<selectionSize, selectionSize>::meanStandardDeviation(
+                  leftSelection, rightSelection);
 
-              outputBuffers[2](x, y) = static_cast<std::uint8_t>(
-                  std::clamp(static_cast<int>(error), 0, 255));
+              outputBuffers[2](x, y) =
+                  static_cast<std::uint8_t>(255 - std::clamp(static_cast<int>(error), 0, 255));
             }
           }
         }
       }
     }
+
+    for (size_t i = 0; i < outputBuffers.size(); ++i)
+    {
+      outputBuffers[i].save_png(("error_frame" + std::to_string(i) + ".png").c_str());
+    }
+
+    for (size_t i = 0; i < frames.size(); ++i)
+    {
+      frames[i].save_png(("frame" + std::to_string(i) + ".png").c_str());
+    }
+
     return outputBuffers[2];
   }
 };

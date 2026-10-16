@@ -2,7 +2,7 @@
  * @file image.hpp
  * @author Andrew Hilton - andrew.hilton@usu.edu
  * @brief
- * @version 2.0 (@LastMod : 2026/10/15 22:52:09)
+ * @version 2.0 (@LastMod : 2026/10/15 23:41:30)
  * @date 2026-10-04
  *
  * @copyright Copyright (c) 2026
@@ -123,9 +123,12 @@ class Image
   Image<selectionWidth, selectionHeight> getSelection(
       std::size_t x, std::size_t y) const
   {
-    if (x > width - selectionWidth || y > height - selectionHeight)
+    if (x > width - selectionWidth / 2 || y > height - selectionHeight / 2 ||
+        x < selectionWidth / 2 || y < selectionHeight / 2)
     {
-      throw std::out_of_range("Selection is outside the image");
+      throw std::out_of_range(
+          "Selection is outside the image " + std::to_string(x) + "," +
+          std::to_string(y));
     }
 
     std::array<std::uint8_t, selectionWidth * selectionHeight> selectionData{};
@@ -134,7 +137,8 @@ class Image
     {
       for (std::size_t i = 0; i < selectionWidth; ++i)
       {
-        selectionData[j * selectionWidth + i] = (*this)(x + i, y + j);
+        selectionData[j * selectionWidth + i] =
+            (*this)(x + i - selectionWidth / 2, y + j - selectionHeight / 2);
       }
     }
 
@@ -217,23 +221,22 @@ class Image
     }
   }
 
-  Image frobeniusInnerProduct(const Image& B) const
+  static float meanStandardDeviation(const Image& A, const Image& B) 
   {
-    Image outputImage;
+    float output = 0.0f;
 
     for (std::size_t y = 0; y < height; ++y)
     {
       for (std::size_t x = 0; x < width; ++x)
       {
-        const std::uint8_t& lhsPixel = (*this)(x, y);
+        const std::uint8_t& lhsPixel = A(x, y);
         const std::uint8_t& rhsPixel = B(x, y);
-        std::uint8_t& outputPixel = outputImage(x, y);
 
-        outputPixel = static_cast<std::uint8_t>(
-            std::clamp(static_cast<int>(lhsPixel) * rhsPixel, 0, 255));
+        float difference = static_cast<float>(lhsPixel) - static_cast<float>(rhsPixel);
+        output += difference * difference;
       }
     }
-    return outputImage;
+    return output;
   }
 
   Image operator*(const float B) const
@@ -425,7 +428,9 @@ class Image
   {
     if (x >= width || y >= height)
     {
-      throw std::out_of_range("Pixel coordinates are out of bounds");
+      throw std::out_of_range(
+          "Pixel coordinates are out of bounds: " + std::to_string(x) + "," +
+          std::to_string(y));
     }
     return y * width + x;
   }

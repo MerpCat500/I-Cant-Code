@@ -31,11 +31,6 @@ int main()
 
   while (true)
   {
-    auto [frame, frame2] = camera.getFrames();
-
-    Image<640, 480> outputBuffer;
-    Image<640, 480> outputBuffer2;
-
     std::string input;
 
     if (tryReadLine(input))
@@ -60,34 +55,7 @@ int main()
                 << std::flush;
     }
 
-    // std ::chrono::steady_clock::time_point startTime =
-    //     std::chrono::steady_clock::now();
-
-    Image<640, 480>::getFeaturesFAST(
-        frame,  //.convolve(frame, Kernel<float, 3>::boxBlur()),
-        outputBuffer,
-        threshold,
-        12);
-
-    Image<640, 480>::getFeaturesFAST(
-        frame2,  //.convolve(frame2, Kernel<float, 3>::boxBlur()),
-        outputBuffer2,
-        threshold,
-        12);
-
-    // std ::chrono::steady_clock::time_point endTime =
-    //     std::chrono::steady_clock::now();
-
-    // std ::cout << "FAST feature detection took "
-    //            << std::chrono::duration_cast<std::chrono::milliseconds>(
-    //                   endTime - startTime)
-    //                   .count()
-    //            << " ms" << std::endl;
-
-    frame.save_png("frame.png");
-    frame2.save_png("frame2.png");
-    outputBuffer.save_png("output.png");
-    outputBuffer2.save_png("output2.png");
+    const auto& errorFrame = camera.template getErrorFrame<5>(threshold);
   }
   return 0;
 }
