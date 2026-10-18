@@ -2,6 +2,7 @@
 #include <unistd.h>
 
 // #include <chrono>
+#include <chrono>
 #include <iostream>
 #include <string>
 
@@ -55,6 +56,7 @@ int main()
                    "'exit' to quit): "
                 << std::flush;
     }
+
 
     const auto& errorFrame = camera.template getErrorFrame<5>(threshold, 10);
     if (!display.processEvents()) { return 0; }
