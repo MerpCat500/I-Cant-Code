@@ -2,7 +2,7 @@
  * @file image.hpp
  * @author Andrew Hilton - andrew.hilton@usu.edu
  * @brief
- * @version 2.0 (@LastMod : 2026/10/15 23:41:30)
+ * @version 2.0 (@LastMod : 2026/10/17 16:23:11)
  * @date 2026-10-04
  *
  * @copyright Copyright (c) 2026
@@ -61,8 +61,7 @@ class Image
     int sourceWidth = 0, sourceHeight = 0;
 
     // Get Raw Data
-    stbi_uc* decodedData =
-        stbi_load(filename, &sourceWidth, &sourceHeight, bpp, readChannels);
+    stbi_uc* decodedData = stbi_load(filename, &sourceWidth, &sourceHeight, bpp, readChannels);
 
     // If there is no data, then print image load error and return nothing.
     if (!decodedData)
@@ -73,8 +72,8 @@ class Image
 
     if (sourceWidth != width || sourceHeight != height)
     {
-      std::cerr << "Image dimensions do not match the Image type: "
-                << sourceWidth << "x" << sourceHeight << std::endl;
+      std::cerr << "Image dimensions do not match the Image type: " << sourceWidth << "x"
+                << sourceHeight << std::endl;
       stbi_image_free(decodedData);
       return;
     }
@@ -84,19 +83,16 @@ class Image
       for (std::size_t x = 0; x < width; ++x)
       {
         const std::size_t index = (y * width + x) * readChannels;
-        data[y * width + x] =
-            (decodedData[index] * 114 + decodedData[index + 1] * 587 +
-             decodedData[index + 2] * 299) /
-            1000;
+        data[y * width + x] = (decodedData[index] * 114 + decodedData[index + 1] * 587 +
+                               decodedData[index + 2] * 299) /
+                              1000;
       }
     }
     // Free the decoded data
     stbi_image_free(decodedData);
   }
 
-  Image(std::array<std::uint8_t, width * height> data) : data(std::move(data))
-  {
-  }
+  Image(std::array<std::uint8_t, width * height> data) : data(std::move(data)) {}
 
   Image(const std::uint8_t fillColor) : data() { data.fill(fillColor); }
 
@@ -110,25 +106,21 @@ class Image
   constexpr std::size_t getWidth() const { return width; }
   constexpr std::size_t getHeight() const { return height; }
 
-  std::uint8_t& operator()(std::size_t x, std::size_t y)
-  { return data[checkedIndex(x, y)]; }
+  std::uint8_t& operator()(std::size_t x, std::size_t y) { return data[checkedIndex(x, y)]; }
 
   const std::uint8_t& operator()(std::size_t x, std::size_t y) const
   { return data[checkedIndex(x, y)]; }
 
-  const std::uint8_t& getPixel(std::size_t x, std::size_t y) const
-  { return (*this)(x, y); }
+  const std::uint8_t& getPixel(std::size_t x, std::size_t y) const { return (*this)(x, y); }
 
   template <std::size_t selectionWidth, std::size_t selectionHeight>
-  Image<selectionWidth, selectionHeight> getSelection(
-      std::size_t x, std::size_t y) const
+  Image<selectionWidth, selectionHeight> getSelection(std::size_t x, std::size_t y) const
   {
     if (x > width - selectionWidth / 2 || y > height - selectionHeight / 2 ||
         x < selectionWidth / 2 || y < selectionHeight / 2)
     {
       throw std::out_of_range(
-          "Selection is outside the image " + std::to_string(x) + "," +
-          std::to_string(y));
+          "Selection is outside the image " + std::to_string(x) + "," + std::to_string(y));
     }
 
     std::array<std::uint8_t, selectionWidth * selectionHeight> selectionData{};
@@ -148,12 +140,7 @@ class Image
   void save_png(const char* filename) const
   {
     if (stbi_write_png(
-            filename,
-            width,
-            height,
-            writeChannels,
-            data.data(),
-            width * writeChannels) == 0)
+            filename, width, height, writeChannels, data.data(), width * writeChannels) == 0)
     {
       std::cerr << "Failed to save image: " << filename << std::endl;
     }
@@ -161,8 +148,7 @@ class Image
 
   void save_jpg(const char* filename, int quality = 90) const
   {
-    if (stbi_write_jpg(
-            filename, width, height, writeChannels, data.data(), quality) == 0)
+    if (stbi_write_jpg(filename, width, height, writeChannels, data.data(), quality) == 0)
     {
       std::cerr << "Failed to save image: " << filename << std::endl;
     }
@@ -170,8 +156,7 @@ class Image
 
   void save_bmp(const char* filename) const
   {
-    if (stbi_write_bmp(filename, width, height, writeChannels, data.data()) ==
-        0)
+    if (stbi_write_bmp(filename, width, height, writeChannels, data.data()) == 0)
     {
       std::cerr << "Failed to save image: " << filename << std::endl;
     }
@@ -186,8 +171,8 @@ class Image
         std::uint8_t& outputPixel = (*this)(x, y);
         const std::uint8_t& rhsPixel = B(x, y);
 
-        outputPixel = static_cast<std::uint8_t>(
-            std::clamp(static_cast<int>(outputPixel) + rhsPixel, 0, 255));
+        outputPixel =
+            static_cast<std::uint8_t>(std::clamp(static_cast<int>(outputPixel) + rhsPixel, 0, 255));
       }
     }
   }
@@ -201,8 +186,8 @@ class Image
         std::uint8_t& outputPixel = (*this)(x, y);
         const std::uint8_t& rhsPixel = B(x, y);
 
-        outputPixel = static_cast<std::uint8_t>(
-            std::clamp(static_cast<int>(outputPixel) - rhsPixel, 0, 255));
+        outputPixel =
+            static_cast<std::uint8_t>(std::clamp(static_cast<int>(outputPixel) - rhsPixel, 0, 255));
       }
     }
   }
@@ -221,7 +206,7 @@ class Image
     }
   }
 
-  static float meanStandardDeviation(const Image& A, const Image& B) 
+  static float meanStandardDeviation(const Image& A, const Image& B)
   {
     float output = 0.0f;
 
@@ -250,8 +235,8 @@ class Image
         const std::uint8_t& lhsPixel = (*this)(x, y);
         std::uint8_t& outputPixel = outputImage(x, y);
 
-        outputPixel = static_cast<std::uint8_t>(
-            std::clamp(static_cast<float>(lhsPixel) * B, 0.0f, 255.0f));
+        outputPixel =
+            static_cast<std::uint8_t>(std::clamp(static_cast<float>(lhsPixel) * B, 0.0f, 255.0f));
       }
     }
     return outputImage;
@@ -269,8 +254,8 @@ class Image
         const std::uint8_t& lhsPixel = (*this)(x, y);
         const std::uint8_t& rhsPixel = B(x, y);
 
-        outputPixel = static_cast<std::uint8_t>(
-            std::clamp(static_cast<int>(lhsPixel) + rhsPixel, 0, 255));
+        outputPixel =
+            static_cast<std::uint8_t>(std::clamp(static_cast<int>(lhsPixel) + rhsPixel, 0, 255));
       }
     }
     return outputImage;
@@ -288,8 +273,8 @@ class Image
         const std::uint8_t& lhsPixel = (*this)(x, y);
         const std::uint8_t& rhsPixel = B(x, y);
 
-        outputPixel = static_cast<std::uint8_t>(
-            std::clamp(static_cast<int>(lhsPixel) - rhsPixel, 0, 255));
+        outputPixel =
+            static_cast<std::uint8_t>(std::clamp(static_cast<int>(lhsPixel) - rhsPixel, 0, 255));
       }
     }
     return outputImage;
@@ -301,8 +286,7 @@ class Image
   {
     static_assert(kernelSize > 0, "The kernel size must be greater than zero");
     static_assert(
-        kernelSize <= width && kernelSize <= height,
-        "The kernel must fit inside the input image");
+        kernelSize <= width && kernelSize <= height, "The kernel must fit inside the input image");
 
     Image<width - kernelSize + 1, height - kernelSize + 1> outputBuffer;
     constexpr std::size_t outputWidth = width - kernelSize + 1;
@@ -319,9 +303,8 @@ class Image
         long double horizontalSum = 0.0L;
         for (std::size_t column = 0; column < kernelSize; ++column)
         {
-          horizontalSum +=
-              static_cast<long double>(inputBuffer(x + column, y)) *
-              static_cast<long double>(horizontalKernel[column]);
+          horizontalSum += static_cast<long double>(inputBuffer(x + column, y)) *
+                           static_cast<long double>(horizontalKernel[column]);
         }
         horizontalPass[y * outputWidth + x] = horizontalSum;
       }
@@ -334,13 +317,12 @@ class Image
         long double convolutionResult = 0.0L;
         for (std::size_t row = 0; row < kernelSize; ++row)
         {
-          convolutionResult +=
-              horizontalPass[(outputY + row) * outputWidth + outputX] *
-              static_cast<long double>(verticalKernel[row]);
+          convolutionResult += horizontalPass[(outputY + row) * outputWidth + outputX] *
+                               static_cast<long double>(verticalKernel[row]);
         }
 
-        outputBuffer(outputX, outputY) = static_cast<std::uint8_t>(
-            std::clamp(convolutionResult, 0.0L, 255.0L));
+        outputBuffer(outputX, outputY) =
+            static_cast<std::uint8_t>(std::clamp(convolutionResult, 0.0L, 255.0L));
       }
     }
 
@@ -355,7 +337,7 @@ class Image
       const Image<width, height>& inputBuffer,
       Image<width, height>& outputBuffer,
       const std::size_t threshold,
-      const std::size_t consecutivePixels = 12)
+      const std::size_t consecutivePixels)
   {
     for (std::size_t y = 0; y < height; ++y)
     {
@@ -375,19 +357,16 @@ class Image
           int neighborX = static_cast<int>(x) + offset.first;
           int neighborY = static_cast<int>(y) + offset.second;
 
-          if (neighborX < static_cast<int>(width) &&
-              neighborY < static_cast<int>(height) && neighborX >= 0 &&
-              neighborY >= 0)
+          if (neighborX < static_cast<int>(width) && neighborY < static_cast<int>(height) &&
+              neighborX >= 0 && neighborY >= 0)
           {
-            const std::uint8_t& neighborPixel =
-                inputBuffer(neighborX, neighborY);
+            const std::uint8_t& neighborPixel = inputBuffer(neighborX, neighborY);
 
-            bool isBrighter = neighborPixel > static_cast<int>(inputPixel) +
-                                                  static_cast<int>(threshold);
-            bool isDarker = neighborPixel < static_cast<int>(inputPixel) -
-                                                static_cast<int>(threshold);
-            bool isNotExtreme =
-                !(isBrighter && lastBrighter) && !(isDarker && lastDarker);
+            bool isBrighter =
+                neighborPixel > static_cast<int>(inputPixel) + static_cast<int>(threshold);
+            bool isDarker =
+                neighborPixel < static_cast<int>(inputPixel) - static_cast<int>(threshold);
+            bool isNotExtreme = !(isBrighter && lastBrighter) && !(isDarker && lastDarker);
 
             if (isBrighter && lastBrighter) { ++isExtreme; }
             else if (isDarker && lastDarker) { ++isExtreme; }
@@ -407,8 +386,7 @@ class Image
 
           if (offset == fastOffsets.back())
           {
-            isExtreme +=
-                firstConsecutivePixels;  // Wrap around to the first pixels
+            isExtreme += firstConsecutivePixels;  // Wrap around to the first pixels
           }
 
           if (isExtreme >= consecutivePixels)
@@ -429,8 +407,7 @@ class Image
     if (x >= width || y >= height)
     {
       throw std::out_of_range(
-          "Pixel coordinates are out of bounds: " + std::to_string(x) + "," +
-          std::to_string(y));
+          "Pixel coordinates are out of bounds: " + std::to_string(x) + "," + std::to_string(y));
     }
     return y * width + x;
   }

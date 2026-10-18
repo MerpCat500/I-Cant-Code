@@ -2,13 +2,14 @@
  * @file localize.hpp
  * @author Andrew Hilton - andrew.hilton@usu.edu
  * @brief Classes for localizing from cameras
- * @version 1.0 (@LastMod : 2026/10/15 23:47:24)
+ * @version 1.0 (@LastMod : 2026/10/17 16:23:04)
  * @date 2026-10-15
  *
  * @copyright Copyright (c) 2026
  *
  */
 
+#include <array>
 #include <string>
 #include <utility>
 
@@ -46,7 +47,8 @@ class StereoCamera
   }
 
   template <std::size_t selectionSize>
-  Image<width, height>& getErrorFrame(std::size_t threshold)
+  std::array<Image<width, height>, 5> getErrorFrame(
+      std::size_t threshold, std::size_t consecutivePixels)
   {
     std::array<Image<width, height>, 2> frames = getFrames();
     std::array<Image<width, height>, 3> outputBuffers = {
@@ -56,7 +58,8 @@ class StereoCamera
 
     for (std::size_t i = 0; i < frames.size(); ++i)
     {
-      Image<width, height>::getFeaturesFAST(frames[i], outputBuffers[i], threshold);
+      Image<width, height>::getFeaturesFAST(
+          frames[i], outputBuffers[i], threshold, consecutivePixels);
     }
 
     for (std::size_t y = selectionSizeHalf; y < height - selectionSizeHalf; ++y)
@@ -75,30 +78,25 @@ class StereoCamera
             std::uint8_t rightPixel = outputBuffers[1](j, y);
             if (rightPixel > 0)
             {
-              const auto& rightSelection =
-                  outputBuffers[1].template getSelection<selectionSize, selectionSize>(j, y);
+              // const auto& rightSelection =
+              //     outputBuffers[1].template getSelection<selectionSize, selectionSize>(j, y);
 
-              auto error = Image<selectionSize, selectionSize>::meanStandardDeviation(
-                  leftSelection, rightSelection);
+              // auto error = Image<selectionSize, selectionSize>::meanStandardDeviation(
+              //     leftSelection, rightSelection);
 
               outputBuffers[2](x, y) =
-                  static_cast<std::uint8_t>(255 - std::clamp(static_cast<int>(error), 0, 255));
+                  static_cast<std::uint8_t>(255);  //- std::clamp(static_cast<int>(error), 0, 255));
             }
           }
         }
       }
     }
 
-    for (size_t i = 0; i < outputBuffers.size(); ++i)
-    {
-      outputBuffers[i].save_png(("error_frame" + std::to_string(i) + ".png").c_str());
-    }
-
-    for (size_t i = 0; i < frames.size(); ++i)
-    {
-      frames[i].save_png(("frame" + std::to_string(i) + ".png").c_str());
-    }
-
-    return outputBuffers[2];
+    return {
+        std::move(outputBuffers[0]),
+        std::move(outputBuffers[1]),
+        std::move(outputBuffers[2]),
+        std::move(frames[0]),
+        std::move(frames[1])};
   }
 };

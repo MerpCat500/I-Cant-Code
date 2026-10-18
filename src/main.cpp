@@ -5,8 +5,8 @@
 #include <iostream>
 #include <string>
 
+#include "display.hpp"
 #include "localize.hpp"
-#include "video_camera.hpp"
 
 // Returns true if a full line was read, false if nothing is ready.
 bool tryReadLine(std::string& line, int timeoutMs = 0)
@@ -22,6 +22,7 @@ bool tryReadLine(std::string& line, int timeoutMs = 0)
 int main()
 {
   StereoCamera<640, 480> camera("/dev/video4", "/dev/video6");
+  Display display;
 
   unsigned long threshold = 10;
 
@@ -55,7 +56,10 @@ int main()
                 << std::flush;
     }
 
-    const auto& errorFrame = camera.template getErrorFrame<5>(threshold);
+    const auto& errorFrame = camera.template getErrorFrame<5>(threshold, 10);
+    if (!display.processEvents()) { return 0; }
+
+    display.show(errorFrame);
   }
   return 0;
 }
