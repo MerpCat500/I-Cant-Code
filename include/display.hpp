@@ -2,7 +2,7 @@
  * @file display.hpp
  * @author Andrew Hilton - andrew.hilton@usu.edu
  * @brief Displays a image buffer to the screen
- * @version 1.0 (@LastMod : 2026/10/17 16:19:13)
+ * @version 1.0 (@LastMod : 2026/10/19 14:06:07)
  * @date 2026-10-17
  *
  * @copyright Copyright (c) 2026
@@ -25,9 +25,6 @@
 
 class Display
 {
- public:
-  using Frame = Image<640, 480>;
-
  private:
   static constexpr int imageWidth = 640;
   static constexpr int imageHeight = 480;
@@ -51,7 +48,7 @@ class Display
     SDL_Quit();
   }
 
-  void updateTexture(SDL_Texture* texture, const Frame& frame)
+  void updateTexture(SDL_Texture* texture, const Image& frame)
   {
     void* pixels = nullptr;
     int pitch = 0;
@@ -147,9 +144,9 @@ class Display
     }
 
     std::size_t index = 0;
-    for (const Frame& frame : frames)
+    for (const auto& frame : frames)
     {
-      updateTexture(textures[index], frame);
+      updateTexture(textures[index], *frame);
       ++index;
     }
 

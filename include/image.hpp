@@ -1,9 +1,8 @@
 /**
  * @file image.hpp
  * @author Andrew Hilton - andrew.hilton@usu.edu
- * @brief
- * @version 2.0 (@LastMod : 2026/10/17 16:23:11)
- * @date 2026-10-04
+ * @brief Image Class and Image View Class
+ * @version 3.0 (@LastMod : 2026/10/19 14:50:38)
  *
  * @copyright Copyright (c) 2026
  *
@@ -14,337 +13,248 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
-#include <iostream>
+#include <memory>
 #include <stdexcept>
-#include <utility>
+#include <string>
 #include <vector>
 
 #include "kernel.hpp"
 
-#define STB_IMAGE_WRITE_IMPLEMENTATION
-#include "stb_image_write.h"
-
-#define STB_IMAGE_IMPLEMENTATION
-#include "stb_image.h"
-
 template <std::size_t width, std::size_t height>
-class Image
+class ImageView;  // Forward Declaration
+
+/**
+ * @brief Image class for storing grayscale images.
+ *
+ */
+class Image : public std::enable_shared_from_this<Image>
 {
  private:
-  std::array<std::uint8_t, width * height> data{};
-  constexpr static size_t readChannels = 4;   // RGBA
-  constexpr static size_t writeChannels = 1;  // Grayscale
-  // Note: The offsets are ordered to maximize the chance of early termination
-  // in the FAST algorithm.
+  std::vector<std::uint8_t> data;
+  std::size_t width;
+  std::size_t height;
   constexpr static std::array<std::pair<int, int>, 16> fastOffsets = {{
-      {0, -3},   //  0: top
-      {1, -3},   //  1: top-right slight
-      {2, -2},   //  2: upper-right
-      {3, -1},   //  3: right-upper slight
-      {3, 0},    //  4: right
-      {3, 1},    //  5: right-lower slight
-      {2, 2},    //  6: lower-right
-      {1, 3},    //  7: bottom-right slight
-      {0, 3},    //  8: bottom
-      {-1, 3},   //  9: bottom-left slight
-      {-2, 2},   // 10: lower-left
-      {-3, 1},   // 11: left-lower slight
-      {-3, 0},   // 12: left
-      {-3, -1},  // 13: left-upper slight
-      {-2, -2},  // 14: upper-left
-      {-1, -3},  // 15: top-left slight
+      {0, -3},
+      {1, -3},
+      {2, -2},
+      {3, -1},
+      {3, 0},
+      {3, 1},
+      {2, 2},
+      {1, 3},
+      {0, 3},
+      {-1, 3},
+      {-2, 2},
+      {-3, 1},
+      {-3, 0},
+      {-3, -1},
+      {-2, -2},
+      {-1, -3},
   }};
 
- public:
-  Image(const char* filename, int* bpp = nullptr)
+ private:
+  /**
+   * @brief Empty Image Constructor
+   *
+   * @param width - Width in pixels of image
+   * @param height - Height in pixels of image
+   */
+  Image(std::size_t width, std::size_t height) : data(width * height), width(width), height(height)
   {
-    int sourceWidth = 0, sourceHeight = 0;
-
-    // Get Raw Data
-    stbi_uc* decodedData = stbi_load(filename, &sourceWidth, &sourceHeight, bpp, readChannels);
-
-    // If there is no data, then print image load error and return nothing.
-    if (!decodedData)
-    {
-      std::cerr << "Failed to load image: " << filename << std::endl;
-      return;
-    }
-
-    if (sourceWidth != width || sourceHeight != height)
-    {
-      std::cerr << "Image dimensions do not match the Image type: " << sourceWidth << "x"
-                << sourceHeight << std::endl;
-      stbi_image_free(decodedData);
-      return;
-    }
-
-    for (std::size_t y = 0; y < height; ++y)
-    {
-      for (std::size_t x = 0; x < width; ++x)
-      {
-        const std::size_t index = (y * width + x) * readChannels;
-        data[y * width + x] = (decodedData[index] * 114 + decodedData[index + 1] * 587 +
-                               decodedData[index + 2] * 299) /
-                              1000;
-      }
-    }
-    // Free the decoded data
-    stbi_image_free(decodedData);
   }
 
-  Image(std::array<std::uint8_t, width * height> data) : data(std::move(data)) {}
-
-  Image(const std::uint8_t fillColor) : data() { data.fill(fillColor); }
-
-  Image() : data() {}
-
-  Image(const Image&) = delete;
-  Image& operator=(const Image&) = delete;
-  Image(Image&&) noexcept = default;
-  Image& operator=(Image&&) noexcept = default;
-
-  constexpr std::size_t getWidth() const { return width; }
-  constexpr std::size_t getHeight() const { return height; }
-
-  std::uint8_t& operator()(std::size_t x, std::size_t y) { return data[checkedIndex(x, y)]; }
-
-  const std::uint8_t& operator()(std::size_t x, std::size_t y) const
-  { return data[checkedIndex(x, y)]; }
-
-  const std::uint8_t& getPixel(std::size_t x, std::size_t y) const { return (*this)(x, y); }
-
-  template <std::size_t selectionWidth, std::size_t selectionHeight>
-  Image<selectionWidth, selectionHeight> getSelection(std::size_t x, std::size_t y) const
+  /**
+   * @brief Construct Image with existing data
+   *
+   * @param width - Width of image in pixels.
+   * @param height - Height of image in pixels.
+   * @param inputData - Existing data to be put in Image.
+   */
+  Image(std::size_t width, std::size_t height, const std::vector<std::uint8_t>& inputData)
+      : data(inputData), width(width), height(height)
   {
-    if (x > width - selectionWidth / 2 || y > height - selectionHeight / 2 ||
-        x < selectionWidth / 2 || y < selectionHeight / 2)
+  }
+
+  /**
+   * @brief Construct a Image given a C-Style memory buffer.
+   *
+   * @param width - Width of image in pixels.
+   * @param height - Height of image in pixels.
+   * @param inputData - Existing data to be put in Image.
+   */
+  Image(std::size_t width, std::size_t height, const uint8_t* inputData)
+      : data(inputData, inputData + width * height), width(width), height(height)
+  {
+  }
+
+ public:
+  /**
+   * @brief Creates a shared pointer to an image.
+   *
+   * @param width - Width of the image.
+   * @param height - Height of the image.
+   * @return std::shared_ptr<Image> - Counted reference to the image.
+   */
+  static std::shared_ptr<Image> create(std::size_t width, std::size_t height)
+  { return std::shared_ptr<Image>(new Image(width, height)); }
+
+  /**
+   * @brief Creates a shared pointer to an image.
+   *
+   * @param width - Width of the image.
+   * @param height - Height of the image.
+   * @param inputData - Data to be referenced from image class.
+   * @return std::shared_ptr<Image> - Counted reference to the image.
+   */
+  static std::shared_ptr<Image> create(
+      std::size_t width, std::size_t height, const std::vector<std::uint8_t>& inputData)
+  { return std::shared_ptr<Image>(new Image(width, height, inputData)); }
+
+  /**
+   * @brief Creates a shared pointer to an image.
+   *
+   * @param width - Width of the image.
+   * @param height - Height of the image.
+   * @param inputData - Data to be referenced from the image class.
+   * @return std::shared_ptr<Image> - Counted reference to the image.
+   */
+  static std::shared_ptr<Image> create(
+      std::size_t width, std::size_t height, const uint8_t* inputData)
+  { return std::shared_ptr<Image>(new Image(width, height, inputData)); }
+
+ public:
+  /**
+   * @brief Get the width of the image.
+   *
+   * @return std::size_t - Width of the image
+   */
+  std::size_t getWidth() const { return width; }
+
+  /**
+   * @brief Get the height of the image.
+   *
+   * @return std::size_t - Height of the image
+   */
+  std::size_t getHeight() const { return height; }
+
+  /**
+   * @brief Get a non-const reference to pixel in image. This will throw std::out_of_range() if
+   * pixel index is out of range.
+   *
+   * @param x - X-Coordinate of Pixel
+   * @param y - Y-Coordinate of Pixel
+   * @return std::uint8_t& - Pixel Reference (upon success)
+   */
+  std::uint8_t& operator()(std::size_t x, std::size_t y)
+  {
+    if (!this->inImage(x, y))
     {
       throw std::out_of_range(
-          "Selection is outside the image " + std::to_string(x) + "," + std::to_string(y));
+          "Image: " + std::to_string(x) + ", " + std::to_string(y) + " is out of range.");
     }
-
-    std::array<std::uint8_t, selectionWidth * selectionHeight> selectionData{};
-
-    for (std::size_t j = 0; j < selectionHeight; ++j)
-    {
-      for (std::size_t i = 0; i < selectionWidth; ++i)
-      {
-        selectionData[j * selectionWidth + i] =
-            (*this)(x + i - selectionWidth / 2, y + j - selectionHeight / 2);
-      }
-    }
-
-    return Image<selectionWidth, selectionHeight>(selectionData);
+    return data[y * width + x];
   }
 
-  void save_png(const char* filename) const
+  /**
+   * @brief Get a const reference to pixel in image. This will throw std::out_of_range() if pixel
+   * index is out of range.
+   *
+   * @param x - X-Coordinate of Pixel
+   * @param y - Y-Coordinate of Pixel
+   * @return const std::uint8_t& - Pixel Reference (upon success)
+   */
+  const std::uint8_t& operator()(std::size_t x, std::size_t y) const
   {
-    if (stbi_write_png(
-            filename, width, height, writeChannels, data.data(), width * writeChannels) == 0)
+    if (!this->inImage(x, y))
     {
-      std::cerr << "Failed to save image: " << filename << std::endl;
+      throw std::out_of_range(
+          "Image: " + std::to_string(x) + ", " + std::to_string(y) + " is out of range.");
     }
+    return data[y * width + x];
   }
 
-  void save_jpg(const char* filename, int quality = 90) const
+  /**
+   * @brief Get an ImageView inside of the image.
+   *
+   * @tparam selectionWidth - Width of selection box
+   * @tparam selectionHeight - Height of selection box
+   * @param x - X-Coordinate in image (top-left coordinate of selection box)
+   * @param y - Y-Coordinate in image (top-left coordinate of selection box)
+   * @return ImageView<selectionWidth, selectionHeight> - View of image
+   */
+  template <std::size_t selectionWidth, std::size_t selectionHeight>
+  ImageView<selectionWidth, selectionHeight> getSelection(std::size_t x, std::size_t y)
   {
-    if (stbi_write_jpg(filename, width, height, writeChannels, data.data(), quality) == 0)
+    if (x + selectionWidth > width || y + selectionHeight > height)
     {
-      std::cerr << "Failed to save image: " << filename << std::endl;
+      throw std::runtime_error(
+          "ImageView<" + std::to_string(selectionWidth) + ", " + std::to_string(selectionHeight) +
+          "> couldn't be made at (" + std::to_string(y) + ", " + std::to_string(y) + ").");
     }
+
+    return ImageView<selectionWidth, selectionHeight>(x, y, shared_from_this());
   }
 
-  void save_bmp(const char* filename) const
+  /**
+   * @brief Get a constant pointer to the raw data stored under this class
+   *
+   * @return const std::vector<std::uint8_t>& data (single channel - grayscale)
+   */
+  const std::vector<std::uint8_t>& getRawData() const { return this->data; }
+
+  std::vector<std::uint8_t>& getRawData() { return this->data; }
+
+  /**
+   * @brief Is pixel in image?
+   *
+   * @param x - X-Coordinate to check.
+   * @param y - Y-Coordinate to check.
+   * @return true - Coordinate is in image.
+   * @return false - Coordinate is out of image.
+   */
+  bool inImage(std::size_t x, std::size_t y) const { return (x < width && y < height); }
+
+  /**
+   * @brief Create a new image containing the output of a FAST-16 Algorithm. This will also create a
+   * output buffer. //!DO NOT USE THIS IN A LOOP!
+   *
+   * @param threshold - Threshold to be considered lighter / darker than pixel
+   * @param consecutivePixels - Consecutive pixels required to quit early and mark as corner.
+   * @return std::shared_ptr<Image>
+   */
+  std::shared_ptr<Image> getFeaturesFast(std::size_t threshold, std::size_t consecutivePixels)
   {
-    if (stbi_write_bmp(filename, width, height, writeChannels, data.data()) == 0)
-    {
-      std::cerr << "Failed to save image: " << filename << std::endl;
-    }
-  }
-
-  void operator+=(const Image& B)
-  {
-    for (std::size_t y = 0; y < height; ++y)
-    {
-      for (std::size_t x = 0; x < width; ++x)
-      {
-        std::uint8_t& outputPixel = (*this)(x, y);
-        const std::uint8_t& rhsPixel = B(x, y);
-
-        outputPixel =
-            static_cast<std::uint8_t>(std::clamp(static_cast<int>(outputPixel) + rhsPixel, 0, 255));
-      }
-    }
-  }
-
-  void operator-=(const Image& B)
-  {
-    for (std::size_t y = 0; y < height; ++y)
-    {
-      for (std::size_t x = 0; x < width; ++x)
-      {
-        std::uint8_t& outputPixel = (*this)(x, y);
-        const std::uint8_t& rhsPixel = B(x, y);
-
-        outputPixel =
-            static_cast<std::uint8_t>(std::clamp(static_cast<int>(outputPixel) - rhsPixel, 0, 255));
-      }
-    }
-  }
-
-  void operator*=(const float B)
-  {
-    for (std::size_t y = 0; y < height; ++y)
-    {
-      for (std::size_t x = 0; x < width; ++x)
-      {
-        std::uint8_t& outputPixel = (*this)(x, y);
-
-        outputPixel = static_cast<std::uint8_t>(
-            std::clamp(static_cast<float>(outputPixel) * B, 0.0f, 255.0f));
-      }
-    }
-  }
-
-  static float meanStandardDeviation(const Image& A, const Image& B)
-  {
-    float output = 0.0f;
-
-    for (std::size_t y = 0; y < height; ++y)
-    {
-      for (std::size_t x = 0; x < width; ++x)
-      {
-        const std::uint8_t& lhsPixel = A(x, y);
-        const std::uint8_t& rhsPixel = B(x, y);
-
-        float difference = static_cast<float>(lhsPixel) - static_cast<float>(rhsPixel);
-        output += difference * difference;
-      }
-    }
-    return output;
-  }
-
-  Image operator*(const float B) const
-  {
-    Image outputImage;
-
-    for (std::size_t y = 0; y < height; ++y)
-    {
-      for (std::size_t x = 0; x < width; ++x)
-      {
-        const std::uint8_t& lhsPixel = (*this)(x, y);
-        std::uint8_t& outputPixel = outputImage(x, y);
-
-        outputPixel =
-            static_cast<std::uint8_t>(std::clamp(static_cast<float>(lhsPixel) * B, 0.0f, 255.0f));
-      }
-    }
-    return outputImage;
-  }
-
-  Image operator+(const Image& B) const
-  {
-    Image outputImage;
-
-    for (std::size_t y = 0; y < height; ++y)
-    {
-      for (std::size_t x = 0; x < width; ++x)
-      {
-        std::uint8_t& outputPixel = outputImage(x, y);
-        const std::uint8_t& lhsPixel = (*this)(x, y);
-        const std::uint8_t& rhsPixel = B(x, y);
-
-        outputPixel =
-            static_cast<std::uint8_t>(std::clamp(static_cast<int>(lhsPixel) + rhsPixel, 0, 255));
-      }
-    }
-    return outputImage;
-  }
-
-  Image operator-(const Image& B) const
-  {
-    Image outputImage;
-
-    for (std::size_t y = 0; y < height; ++y)
-    {
-      for (std::size_t x = 0; x < width; ++x)
-      {
-        std::uint8_t& outputPixel = outputImage(x, y);
-        const std::uint8_t& lhsPixel = (*this)(x, y);
-        const std::uint8_t& rhsPixel = B(x, y);
-
-        outputPixel =
-            static_cast<std::uint8_t>(std::clamp(static_cast<int>(lhsPixel) - rhsPixel, 0, 255));
-      }
-    }
-    return outputImage;
-  }
-
-  template <std::size_t kernelSize, typename kernelType = float>
-  static Image<width - kernelSize + 1, height - kernelSize + 1> convolve(
-      const Image& inputBuffer, const Kernel<kernelType, kernelSize>& kernel)
-  {
-    static_assert(kernelSize > 0, "The kernel size must be greater than zero");
-    static_assert(
-        kernelSize <= width && kernelSize <= height, "The kernel must fit inside the input image");
-
-    Image<width - kernelSize + 1, height - kernelSize + 1> outputBuffer;
-    constexpr std::size_t outputWidth = width - kernelSize + 1;
-    constexpr std::size_t outputHeight = height - kernelSize + 1;
-
-    const auto& horizontalKernel = kernel.getInner();
-    const auto& verticalKernel = kernel.getOuter();
-    std::vector<long double> horizontalPass(outputWidth * height, 0.0L);
-
-    for (std::size_t y = 0; y < height; ++y)
-    {
-      for (std::size_t x = 0; x < outputWidth; ++x)
-      {
-        long double horizontalSum = 0.0L;
-        for (std::size_t column = 0; column < kernelSize; ++column)
-        {
-          horizontalSum += static_cast<long double>(inputBuffer(x + column, y)) *
-                           static_cast<long double>(horizontalKernel[column]);
-        }
-        horizontalPass[y * outputWidth + x] = horizontalSum;
-      }
-    }
-
-    for (std::size_t outputY = 0; outputY < outputHeight; ++outputY)
-    {
-      for (std::size_t outputX = 0; outputX < outputWidth; ++outputX)
-      {
-        long double convolutionResult = 0.0L;
-        for (std::size_t row = 0; row < kernelSize; ++row)
-        {
-          convolutionResult += horizontalPass[(outputY + row) * outputWidth + outputX] *
-                               static_cast<long double>(verticalKernel[row]);
-        }
-
-        outputBuffer(outputX, outputY) =
-            static_cast<std::uint8_t>(std::clamp(convolutionResult, 0.0L, 255.0L));
-      }
-    }
-
+    auto outputBuffer = Image::create(this->getWidth(), this->getHeight());
+    getFeaturesFast(threshold, consecutivePixels, outputBuffer);
     return outputBuffer;
   }
 
   /**
-   * @brief Get the Features Accelerated Segment Test (FAST)
+   * @brief Run FAST-16 without creating a output buffer
    *
+   * @param threshold - Threshold to be considered lighter / darker than pixel
+   * @param consecutivePixels - Consecutive Pixels required to quit early and mark as corner
+   * @param outputBuffer - Buffer to be modified by FAST (Avoids creating buffers in a loop).
    */
-  static void getFeaturesFAST(
-      const Image<width, height>& inputBuffer,
-      Image<width, height>& outputBuffer,
-      const std::size_t threshold,
-      const std::size_t consecutivePixels)
+  void getFeaturesFast(
+      std::size_t threshold,
+      std::size_t consecutivePixels,
+      const std::shared_ptr<Image>& outputBuffer)
   {
+    if (!outputBuffer || outputBuffer->getWidth() != width || outputBuffer->getHeight() != height)
+    {
+      throw std::invalid_argument("Feature output dimensions do not match image dimensions");
+    }
+
+    const auto& inputPixels = data;
+    auto& outputPixels = outputBuffer->data;
+
     for (std::size_t y = 0; y < height; ++y)
     {
       for (std::size_t x = 0; x < width; ++x)
       {
-        std::uint8_t& outputPixel = outputBuffer(x, y);
-        const std::uint8_t& inputPixel = inputBuffer(x, y);
+        std::uint8_t& outputPixel = outputPixels[y * width + x];
+        const std::uint8_t inputPixel = inputPixels[y * width + x];
 
         std::size_t isExtreme = 0;
         std::size_t firstConsecutivePixels = 0;
@@ -360,7 +270,8 @@ class Image
           if (neighborX < static_cast<int>(width) && neighborY < static_cast<int>(height) &&
               neighborX >= 0 && neighborY >= 0)
           {
-            const std::uint8_t& neighborPixel = inputBuffer(neighborX, neighborY);
+            const std::uint8_t neighborPixel = inputPixels
+                [static_cast<std::size_t>(neighborY) * width + static_cast<std::size_t>(neighborX)];
 
             bool isBrighter =
                 neighborPixel > static_cast<int>(inputPixel) + static_cast<int>(threshold);
@@ -401,14 +312,148 @@ class Image
     }
   }
 
- private:
-  std::size_t checkedIndex(std::size_t x, std::size_t y) const
+  template <typename kernelType, std::size_t kernelSize>
+  std::shared_ptr<Image> convolve(const Kernel<kernelType, kernelSize>& kernel)
   {
-    if (x >= width || y >= height)
+    // TODO: Clean and check this algorithm, it was taken from V1 without review
+    std::size_t outputWidth = width - kernelSize + 1;
+    std::size_t outputHeight = height - kernelSize + 1;
+
+    auto outputBuffer = Image::create(outputWidth, outputHeight);
+
+    const auto& horizontalKernel = kernel.getInner();
+    const auto& verticalKernel = kernel.getOuter();
+
+    std::vector<long double> horizontalPass(outputWidth * height, 0.0L);
+
+    for (std::size_t y = 0; y < height; ++y)
     {
-      throw std::out_of_range(
-          "Pixel coordinates are out of bounds: " + std::to_string(x) + "," + std::to_string(y));
+      for (std::size_t x = 0; x < outputWidth; ++x)
+      {
+        long double horizontalSum = 0.0L;
+        for (std::size_t column = 0; column < kernelSize; ++column)
+        {
+          horizontalSum += static_cast<long double>((*this)(x + column, y)) *
+                           static_cast<long double>(horizontalKernel[column]);
+        }
+        horizontalPass[y * outputWidth + x] = horizontalSum;
+      }
     }
-    return y * width + x;
+
+    for (std::size_t outputY = 0; outputY < outputHeight; ++outputY)
+    {
+      for (std::size_t outputX = 0; outputX < outputWidth; ++outputX)
+      {
+        long double convolutionResult = 0.0L;
+        for (std::size_t row = 0; row < kernelSize; ++row)
+        {
+          convolutionResult += horizontalPass[(outputY + row) * outputWidth + outputX] *
+                               static_cast<long double>(verticalKernel[row]);
+        }
+
+        (*outputBuffer)(outputX, outputY) =
+            static_cast<std::uint8_t>(std::clamp(convolutionResult, 0.0L, 255.0L));
+      }
+    }
+
+    return outputBuffer;
   }
+};
+
+/**
+ * @brief ImageView class allows for selecting a section of an image without copy.
+ *
+ * @tparam width Width of Selection (Must be known at compile time)
+ * @tparam height Height of Selection (Must be known at compile time)
+ */
+template <std::size_t width, std::size_t height>
+class ImageView
+{
+ private:
+  // Offset to the start of the selection within the parent image.
+  std::size_t m_xOffset, m_yOffset;
+
+  // Pointer to Parent. Will keep parent alive.
+  std::shared_ptr<Image> m_pParent;
+
+ public:
+  /**
+   * @brief Get const value of pixel inside of view
+   *
+   * @param x - X-Coordinate relative to view
+   * @param y - Y-Coordinate relative to view
+   * @return const std::uint8_t&
+   */
+  const std::uint8_t& operator()(std::size_t x, std::size_t y) const
+  {
+    if (!this->inView(x, y))
+    {
+      throw std::runtime_error(
+          "Pixel coordinates are out of bounds for the image view: " + std::to_string(x) + "," +
+          std::to_string(y) + ", starting at (" + std::to_string(m_xOffset) + ", " +
+          std::to_string(m_yOffset) + ")");
+    }
+
+    return (*m_pParent)(x + m_xOffset, y + m_yOffset);
+  }
+
+  /**
+   * @brief Get const value of pixel inside of view
+   *
+   * @param x - X-Coordinate relative to view
+   * @param y - Y-Coordinate relative to view
+   * @return const std::uint8_t&
+   */
+  const std::uint8_t& getPixel(std::size_t x, std::size_t y) const
+  {
+    if (!this->inView(x, y))
+    {
+      throw std::runtime_error(
+          "Pixel coordinates are out of bounds for the image view: " + std::to_string(x) + "," +
+          std::to_string(y) + ", starting at (" + std::to_string(m_xOffset) + ", " +
+          std::to_string(m_yOffset) + ")");
+    }
+
+    return (*this)(x, y);
+  }
+
+  /**
+   * @brief Get the Width of ImageView
+   *
+   * @return constexpr std::size_t
+   */
+  constexpr std::size_t getWidth() const { return width; }
+
+  /**
+   * @brief Get the Height of ImageView
+   *
+   * @return constexpr std::size_t
+   */
+  constexpr std::size_t getHeight() const { return height; }
+
+  /**
+   * @brief Returns whether a pixel is inside of view.
+   *
+   * @param x - X-Coordinate
+   * @param y - Y-Coordinate
+   * @return true - Is in Image View
+   * @return false - Is out of Image View
+   */
+  bool inView(std::size_t x, std::size_t y) const
+  { return (x <= m_xOffset + width && y <= m_yOffset + height); }
+
+ protected:
+  /**
+   * @brief Image view constructor. Can be constructed by friendly classes.
+   *
+   * @param Offset X-Coordinate offset of the view within the parent image.
+   * @param yOffset Y-Coordinate offset of the view within the parent image.
+   * @param parent Shared pointer to the parent image.
+   */
+  ImageView(std::size_t Offset, std::size_t yOffset, std::shared_ptr<Image> pParent)
+      : m_xOffset(Offset), m_yOffset(yOffset), m_pParent(pParent)
+  {
+  }
+
+  friend Image;  // Allows Image Class to create image views
 };
