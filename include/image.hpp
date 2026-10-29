@@ -2,7 +2,7 @@
  * @file image.hpp
  * @author Andrew Hilton - andrew.hilton@usu.edu
  * @brief Image Class and Image View Class
- * @version 3.0 (@LastMod : 2026/10/19 14:50:38)
+ * @version 3.0 (@LastMod : 2026/10/26 20:17:57)
  *
  * @copyright Copyright (c) 2026
  *
@@ -33,6 +33,12 @@ class Image : public std::enable_shared_from_this<Image>
   std::vector<std::uint8_t> data;
   std::size_t width;
   std::size_t height;
+  constexpr static std::array<std::pair<int, int>, 4> quickFastOffsets = {{
+      {0, -3},
+      {3, 0},
+      {0, 3},
+      {-3, 0},
+  }};
   constexpr static std::array<std::pair<int, int>, 16> fastOffsets = {{
       {0, -3},
       {1, -3},
@@ -214,46 +220,26 @@ class Image : public std::enable_shared_from_this<Image>
    */
   bool inImage(std::size_t x, std::size_t y) const { return (x < width && y < height); }
 
-  /**
-   * @brief Create a new image containing the output of a FAST-16 Algorithm. This will also create a
-   * output buffer. //!DO NOT USE THIS IN A LOOP!
-   *
-   * @param threshold - Threshold to be considered lighter / darker than pixel
-   * @param consecutivePixels - Consecutive pixels required to quit early and mark as corner.
-   * @return std::shared_ptr<Image>
-   */
-  std::shared_ptr<Image> getFeaturesFast(std::size_t threshold, std::size_t consecutivePixels)
+  void clear()
   {
-    auto outputBuffer = Image::create(this->getWidth(), this->getHeight());
-    getFeaturesFast(threshold, consecutivePixels, outputBuffer);
-    return outputBuffer;
+    for (std::size_t y = 0; y < height; y++)
+    {
+      for (std::size_t x = 0; x < width; x++) { (*this)(x, y) = 0; }
+    }
   }
 
-  /**
-   * @brief Run FAST-16 without creating a output buffer
-   *
-   * @param threshold - Threshold to be considered lighter / darker than pixel
-   * @param consecutivePixels - Consecutive Pixels required to quit early and mark as corner
-   * @param outputBuffer - Buffer to be modified by FAST (Avoids creating buffers in a loop).
-   */
-  void getFeaturesFast(
-      std::size_t threshold,
-      std::size_t consecutivePixels,
-      const std::shared_ptr<Image>& outputBuffer)
+  template <size_t viewSize>
+  std::vector<ImageView<viewSize, viewSize>> getFeaturesFast(
+      std::size_t threshold, std::size_t consecutivePixels)
   {
-    if (!outputBuffer || outputBuffer->getWidth() != width || outputBuffer->getHeight() != height)
-    {
-      throw std::invalid_argument("Feature output dimensions do not match image dimensions");
-    }
+    std::vector<ImageView<viewSize, viewSize>> output;
 
     const auto& inputPixels = data;
-    auto& outputPixels = outputBuffer->data;
 
     for (std::size_t y = 0; y < height; ++y)
     {
       for (std::size_t x = 0; x < width; ++x)
       {
-        std::uint8_t& outputPixel = outputPixels[y * width + x];
         const std::uint8_t inputPixel = inputPixels[y * width + x];
 
         std::size_t isExtreme = 0;
@@ -262,54 +248,95 @@ class Image : public std::enable_shared_from_this<Image>
         bool lastBrighter = true;
         bool lastDarker = true;
 
-        for (auto offset : fastOffsets)
-        {
-          int neighborX = static_cast<int>(x) + offset.first;
-          int neighborY = static_cast<int>(y) + offset.second;
+        // for (const auto& offset : quickFastOffsets)
+        // {
+        //   int neighborX = static_cast<int>(x) + offset.first;
+        //   int neighborY = static_cast<int>(y) + offset.second;
 
-          if (neighborX < static_cast<int>(width) && neighborY < static_cast<int>(height) &&
-              neighborX >= 0 && neighborY >= 0)
+        //   if (neighborX < static_cast<int>(width) && neighborY < static_cast<int>(height) &&
+        //       neighborX >= 0 && neighborY >= 0)
+        //   {
+        //     const std::uint8_t neighborPixel = inputPixels
+        //         [static_cast<std::size_t>(neighborY) * width + static_cast<std::size_t>(neighborX)];
+
+        //     bool isBrighter =
+        //         neighborPixel > static_cast<int>(inputPixel) + static_cast<int>(threshold);
+        //     bool isDarker =
+        //         neighborPixel < static_cast<int>(inputPixel) - static_cast<int>(threshold);
+        //     bool isNotExtreme = !(isBrighter && lastBrighter) && !(isDarker && lastDarker);
+
+        //     if (isNotExtreme) { break; }
+
+        //     lastBrighter = isBrighter;
+        //     lastDarker = isDarker;
+        //   }
+        // }
+
+        // if (isExtreme > 2 && x + viewSize <= width && y + viewSize <= height)
+        // {
+        //   output.push_back(this->getSelection<viewSize, viewSize>(x, y));
+        //   x += viewSize / 2 - 1;
+        // }
+        // else
+        // {
+          isExtreme = 0;  // Run large test
+          for (const auto& offset : fastOffsets)
           {
-            const std::uint8_t neighborPixel = inputPixels
-                [static_cast<std::size_t>(neighborY) * width + static_cast<std::size_t>(neighborX)];
+            int neighborX = static_cast<int>(x) + offset.first;
+            int neighborY = static_cast<int>(y) + offset.second;
 
-            bool isBrighter =
-                neighborPixel > static_cast<int>(inputPixel) + static_cast<int>(threshold);
-            bool isDarker =
-                neighborPixel < static_cast<int>(inputPixel) - static_cast<int>(threshold);
-            bool isNotExtreme = !(isBrighter && lastBrighter) && !(isDarker && lastDarker);
-
-            if (isBrighter && lastBrighter) { ++isExtreme; }
-            else if (isDarker && lastDarker) { ++isExtreme; }
-            else if (isNotExtreme && !firstConsecutivePixelsSet)
+            if (neighborX < static_cast<int>(width) && neighborY < static_cast<int>(height) &&
+                neighborX >= 0 && neighborY >= 0)
             {
-              firstConsecutivePixels = isExtreme;
-              firstConsecutivePixelsSet = true;
+              const std::uint8_t neighborPixel = inputPixels
+                  [static_cast<std::size_t>(neighborY) * width +
+                   static_cast<std::size_t>(neighborX)];
+
+              bool isBrighter =
+                  neighborPixel > static_cast<int>(inputPixel) + static_cast<int>(threshold);
+              bool isDarker =
+                  neighborPixel < static_cast<int>(inputPixel) - static_cast<int>(threshold);
+              bool isNotExtreme = !(isBrighter && lastBrighter) && !(isDarker && lastDarker);
+
+              if (isBrighter && lastBrighter) { ++isExtreme; }
+              else if (isDarker && lastDarker) { ++isExtreme; }
+              else if (isNotExtreme && !firstConsecutivePixelsSet)
+              {
+                firstConsecutivePixels = isExtreme;
+                firstConsecutivePixelsSet = true;
+              }
+              else
+              {
+                isExtreme = 0;
+              }
+
+              lastBrighter = isBrighter;
+              lastDarker = isDarker;
             }
-            else
+
+            if (offset == fastOffsets.back())
             {
-              isExtreme = 0;
+              isExtreme += firstConsecutivePixels;  // Wrap around to the first pixels
             }
 
-            lastBrighter = isBrighter;
-            lastDarker = isDarker;
-          }
+            if (isExtreme >= consecutivePixels)
+            {
+              if (x > viewSize / 2 && y > viewSize / 2 && x < width - viewSize / 2 &&
+                  y < height - viewSize / 2)
+              {
+                output.push_back(
+                    this->getSelection<viewSize, viewSize>(x - viewSize / 2, y - viewSize / 2));
 
-          if (offset == fastOffsets.back())
-          {
-            isExtreme += firstConsecutivePixels;  // Wrap around to the first pixels
+                x += viewSize / 2 - 1;
+              }
+              break;
+            }
           }
-
-          if (isExtreme >= consecutivePixels)
-          {
-            outputPixel = 255;
-            break;
-          }
-
-          outputPixel = 255 / 16 * isExtreme;
-        }
+        // }
       }
     }
+
+    return output;
   }
 
   template <typename kernelType, std::size_t kernelSize>
@@ -371,7 +398,7 @@ class ImageView
 {
  private:
   // Offset to the start of the selection within the parent image.
-  std::size_t m_xOffset, m_yOffset;
+  const std::size_t m_xOffset, m_yOffset;
 
   // Pointer to Parent. Will keep parent alive.
   std::shared_ptr<Image> m_pParent;
@@ -416,6 +443,20 @@ class ImageView
 
     return (*this)(x, y);
   }
+
+  /**
+   * @brief Get the offset of the image view to the image
+   *
+   * @return std::size_t
+   */
+  std::size_t getXOffset() const { return m_xOffset; }
+
+  /**
+   * @brief Get the offset of the image view to the image.
+   *
+   * @return std::size_t
+   */
+  std::size_t getYOffset() const { return m_yOffset; }
 
   /**
    * @brief Get the Width of ImageView

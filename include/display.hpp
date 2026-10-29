@@ -2,7 +2,7 @@
  * @file display.hpp
  * @author Andrew Hilton - andrew.hilton@usu.edu
  * @brief Displays a image buffer to the screen
- * @version 1.0 (@LastMod : 2026/10/19 14:06:07)
+ * @version 1.0 (@LastMod : 2026/10/28 16:23:54)
  * @date 2026-10-17
  *
  * @copyright Copyright (c) 2026
@@ -12,16 +12,19 @@
 #pragma once
 
 #include <SDL2/SDL.h>
+#include <SDL2/SDL_ttf.h>
 
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <stdexcept>
 #include <string>
 #include <thread>
 #include <vector>
 
 #include "image.hpp"
+#include "localize.hpp"
 
 class Display
 {
@@ -30,6 +33,7 @@ class Display
   static constexpr int imageHeight = 480;
   SDL_Window* window = nullptr;
   SDL_Renderer* renderer = nullptr;
+  TTF_Font* font = nullptr;
   std::vector<SDL_Texture*> textures;
   std::chrono::steady_clock::time_point lastPresent;
   bool hasPresented = false;
@@ -41,10 +45,13 @@ class Display
       if (texture) { SDL_DestroyTexture(texture); }
     }
     textures.clear();
+    if (font) { TTF_CloseFont(font); }
     if (renderer) { SDL_DestroyRenderer(renderer); }
     if (window) { SDL_DestroyWindow(window); }
+    font = nullptr;
     renderer = nullptr;
     window = nullptr;
+    TTF_Quit();
     SDL_Quit();
   }
 
@@ -81,6 +88,29 @@ class Display
     }
   }
 
+  void drawDistance(float distance, int rightX, int rightY)
+  {
+    char text[32];
+    std::snprintf(text, sizeof(text), "%.2fin", static_cast<double>(distance));
+
+    SDL_Color color{255, 255, 255, 255};
+    SDL_Surface* surface = TTF_RenderText_Blended(font, text, color);
+    if (!surface) { throw std::runtime_error(TTF_GetError()); }
+
+    SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surface);
+    if (!texture)
+    {
+      const std::string error = SDL_GetError();
+      SDL_FreeSurface(surface);
+      throw std::runtime_error(error);
+    }
+
+    SDL_Rect destination{rightX + 32 - surface->w, rightY - surface->h - 2, surface->w, surface->h};
+    SDL_FreeSurface(surface);
+    SDL_RenderCopy(renderer, texture, nullptr, &destination);
+    SDL_DestroyTexture(texture);
+  }
+
   void limitFrameRate()
   {
     constexpr auto frameInterval = std::chrono::microseconds(33334);
@@ -91,6 +121,12 @@ class Display
   explicit Display(const char* title = "Image Display")
   {
     if (SDL_Init(SDL_INIT_VIDEO) != 0) { throw std::runtime_error(SDL_GetError()); }
+    if (TTF_Init() != 0)
+    {
+      const std::string error = TTF_GetError();
+      cleanup();
+      throw std::runtime_error(error);
+    }
 
     window = SDL_CreateWindow(
         title,
@@ -103,6 +139,14 @@ class Display
     if (!window || !renderer)
     {
       const std::string error = SDL_GetError();
+      cleanup();
+      throw std::runtime_error(error);
+    }
+
+    font = TTF_OpenFont("/usr/share/fonts/TTF/FiraCode-Medium.ttf", 14);
+    if (!font)
+    {
+      const std::string error = TTF_GetError();
       cleanup();
       throw std::runtime_error(error);
     }
@@ -124,7 +168,10 @@ class Display
   }
 
   template <typename FrameContainer>
-  void show(const FrameContainer& frames)
+  void show(
+      const FrameContainer& frames,
+      const std::vector<Match> matches,
+      const std::array<std::vector<ImageView<32, 32>>, 2>& keypoints)
   {
     if (frames.empty()) { return; }
 
@@ -137,6 +184,7 @@ class Display
     const std::size_t rows = (frames.size() + columns - 1) / columns;
     const int windowWidth = static_cast<int>(columns * imageWidth);
     const int windowHeight = static_cast<int>(rows * imageHeight);
+
     SDL_SetWindowSize(window, windowWidth, windowHeight);
     if (SDL_RenderSetLogicalSize(renderer, windowWidth, windowHeight) != 0)
     {
@@ -160,6 +208,42 @@ class Display
           imageHeight};
       SDL_RenderCopy(renderer, textures[i], nullptr, &destination);
     }
+
+    for (std::size_t i = 0; i < matches.size(); i++)
+    {
+      const auto& match = matches[i];
+      SDL_SetRenderDrawColor(renderer, 125, (matches[i].getDistance()), 0, 255);
+
+      const int leftX = static_cast<int>(match.left->getXOffset());
+      const int leftY = static_cast<int>(match.left->getYOffset());
+      const int rightX = imageWidth + static_cast<int>(match.right->getXOffset());
+      const int rightY = static_cast<int>(match.right->getYOffset());
+
+      SDL_RenderDrawLine(
+          renderer, leftX + 32 / 2, leftY + 32 / 2, rightX + 32 / 2, rightY + 32 / 2);
+
+      constexpr int squareSize = 32;
+      SDL_Rect leftSquare{leftX, leftY, squareSize, squareSize};
+      SDL_Rect rightSquare{rightX, rightY, squareSize, squareSize};
+      SDL_RenderDrawRect(renderer, &leftSquare);
+      SDL_RenderDrawRect(renderer, &rightSquare);
+      drawDistance(match.getDistance(), rightX, rightY);
+    }
+
+    SDL_SetRenderDrawColor(renderer, 0, 125, 255, 255);
+
+    for (const auto& keypoint : keypoints[0])
+    {
+      SDL_RenderDrawPoint(renderer, keypoint.getXOffset() + 32 / 2, keypoint.getYOffset() + 32 / 2);
+    }
+    for (const auto& keypoint : keypoints[1])
+    {
+      SDL_RenderDrawPoint(
+          renderer, imageWidth + keypoint.getXOffset() + 32 / 2, keypoint.getYOffset() + 32 / 2);
+    }
+
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+
     SDL_RenderPresent(renderer);
     lastPresent = std::chrono::steady_clock::now();
     hasPresented = true;

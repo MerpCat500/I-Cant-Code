@@ -2,7 +2,7 @@
  * @file localize.hpp
  * @author Andrew Hilton - andrew.hilton@usu.edu
  * @brief Classes for localizing from cameras
- * @version 1.0 (@LastMod : 2026/10/19 14:59:28)
+ * @version 1.0 (@LastMod : 2026/10/29 11:20:33)
  * @date 2026-10-15
  *
  * @copyright Copyright (c) 2026
@@ -10,21 +10,46 @@
  */
 
 #include <array>
+#include <atomic>
 #include <cmath>
-#include <limits>
+#include <cstdint>
+#include <mutex>
 #include <string>
+#include <thread>
+#include <vector>
 
 #include "image.hpp"
 #include "video_camera.hpp"
+
+#pragma once
+
+struct Match
+{
+  constexpr static float cameraSpacing = 4.0f;
+  constexpr static float focalLength = 711.1111f;
+
+  const ImageView<32, 32>* left;
+  const ImageView<32, 32>* right;
+  float disparityX;
+
+  float getDistance() const
+  {
+    if (distance == 0.0f) { distance = focalLength * cameraSpacing / disparityX; }
+
+    return distance;
+  }
+
+  mutable float distance = 0.0f;
+};
 
 class StereoCamera
 {
  private:
   VideoCamera leftCamera;
   VideoCamera rightCamera;
+
   std::array<std::shared_ptr<Image>, 2> frames;
-  std::array<std::shared_ptr<Image>, 2> featureBuffers;
-  std::shared_ptr<Image> errorBuffer;
+  std::array<std::vector<ImageView<32, 32>>, 2> featureBuffers;
 
  public:
   StereoCamera(const std::string& leftCameraPath, const std::string& rightCameraPath)
@@ -35,10 +60,10 @@ class StereoCamera
     {
       throw std::runtime_error("Stereo cameras negotiated different frame sizes");
     }
-    frames = {Image::create(getWidth(), getHeight()), Image::create(getWidth(), getHeight())};
-    featureBuffers = {
-        Image::create(getWidth(), getHeight()), Image::create(getWidth(), getHeight())};
-    errorBuffer = Image::create(getWidth(), getHeight());
+
+    frames = {
+        Image::create(this->getWidth(), this->getHeight()),
+        Image::create(this->getWidth(), this->getHeight())};
   }
 
   ~StereoCamera() = default;
@@ -51,6 +76,9 @@ class StereoCamera
   std::size_t getWidth() const { return leftCamera.getWidth(); }
   std::size_t getHeight() const { return leftCamera.getHeight(); }
 
+  const std::array<std::vector<ImageView<32, 32>>, 2>& getFeatureBuffers()
+  { return featureBuffers; }
+
   std::array<std::shared_ptr<Image>, 2> getFrames()
   {
     leftCamera.getFrame(frames[0]);
@@ -59,96 +87,224 @@ class StereoCamera
   }
 
   template <std::size_t selectionSize>
-  std::array<std::shared_ptr<Image>, 5> getErrorFrame(
-      std::size_t threshold, std::size_t consecutivePixels)
+  std::vector<Match> getMatches(
+      std::size_t threshold, std::size_t consecutivePixels, std::size_t errorThreshold)
   {
     getFrames();
-    const std::size_t frameWidth = getWidth();
-    const std::size_t frameHeight = getHeight();
+
+    std::vector<Match> output;
 
     for (std::size_t i = 0; i < frames.size(); ++i)
     {
-      frames[i]->getFeaturesFast(threshold, consecutivePixels, featureBuffers[i]);
+      featureBuffers[i] = frames[i]->getFeaturesFast<32>(threshold, consecutivePixels);
     }
 
-    auto& errorPixels = errorBuffer->getRawData();
-    std::fill(errorPixels.begin(), errorPixels.end(), 0);
-    const auto& leftFeatures = featureBuffers[0]->getRawData();
-    const auto& rightFeatures = featureBuffers[1]->getRawData();
-    const auto& leftPixels = frames[0]->getRawData();
-    const auto& rightPixels = frames[1]->getRawData();
+    std::mutex outputMutex;
+    std::atomic<std::size_t> nextLeftFeature{0};
+    std::vector<std::thread> tasks;
+    const std::size_t hardwareThreads = std::thread::hardware_concurrency();
+    const std::size_t workerCount =
+        std::min(featureBuffers[0].size(), hardwareThreads == 0 ? std::size_t{1} : hardwareThreads);
+    tasks.reserve(workerCount);
 
-    for (std::size_t y = 0; y < frameHeight - selectionSize; ++y)
+    for (std::size_t worker = 0; worker < workerCount; ++worker)
     {
-      for (std::size_t x = 0; x < frameWidth - selectionSize; ++x)
-      {
-        // For a rectified left/right stereo pair, a point moves left in the right image.
-        if (leftFeatures[y * frameWidth + x] > 0)
+      tasks.emplace_back([this, &nextLeftFeature, errorThreshold, &output, &outputMutex]() {
+        std::vector<Match> workerMatches;
+
+        while (true)
         {
-          std::uint32_t bestError = std::numeric_limits<std::uint32_t>::max();
-          std::uint32_t secondBestError = std::numeric_limits<std::uint32_t>::max();
-          std::size_t bestX = x;
+          const std::size_t leftIndex = nextLeftFeature.fetch_add(1);
+          if (leftIndex >= featureBuffers[0].size()) { break; }
 
-          for (std::size_t j = 0; j <= x; ++j)
+          const auto& leftFeature = featureBuffers[0][leftIndex];
+
+          for (const auto& rightFeature : featureBuffers[1])
           {
-            if (rightFeatures[y * frameWidth + j] > 0)
-            {
-              std::uint32_t error = 0;
-              for (std::size_t selectionY = 0; selectionY < selectionSize; ++selectionY)
-              {
-                for (std::size_t selectionX = 0; selectionX < selectionSize; ++selectionX)
-                {
-                  error += std::abs(
-                      static_cast<int>(leftPixels[(y + selectionY) * frameWidth + x + selectionX]) -
-                      static_cast<int>(
-                          rightPixels[(y + selectionY) * frameWidth + j + selectionX]));
-                }
-              }
+            if (rightFeature.getYOffset() < leftFeature.getYOffset()) { continue; }
+            if (rightFeature.getYOffset() > leftFeature.getYOffset()) { break; }
 
-              if (error < bestError)
-              {
-                secondBestError = bestError;
-                bestError = error;
-                bestX = j;
-              }
-              else if (error < secondBestError) { secondBestError = error; }
+            float error = this->getError2(leftFeature, rightFeature, errorThreshold);
+
+            if (error < errorThreshold)
+            {
+              Match match{
+                  &leftFeature,
+                  &rightFeature,
+                  static_cast<float>(leftFeature.getXOffset()) - rightFeature.getXOffset()};
+
+              if (match.getDistance() > 0) workerMatches.push_back(match);
             }
           }
-
-          constexpr std::uint32_t maxError = selectionSize * selectionSize * 255;
-          constexpr std::uint32_t acceptedError = maxError / 3;
-          const bool hasDistinctMatch =
-              secondBestError == std::numeric_limits<std::uint32_t>::max() ||
-              bestError * 5 < secondBestError * 4;
-          if (bestError <= acceptedError && hasDistinctMatch)
-          {
-            errorPixels[y * frameWidth + bestX] =
-                static_cast<std::uint8_t>(255 - (bestError * 255 / maxError));
-          }
         }
-      }
+
+        std::lock_guard lock(outputMutex);
+        output.insert(output.end(), workerMatches.begin(), workerMatches.end());
+      });
     }
 
-    return {featureBuffers[0], featureBuffers[1], errorBuffer, frames[0], frames[1]};
+    // Ensure workers finish before output is returned.
+    for (auto& task : tasks) { task.join(); }
+
+    return output;
   }
 
   template <std::size_t selectionSize>
-  float getError(
-      ImageView<selectionSize, selectionSize> leftSelection,
-      ImageView<selectionSize, selectionSize> rightSelection)
+  float getError2(
+      const ImageView<selectionSize, selectionSize>& leftSelection,
+      const ImageView<selectionSize, selectionSize>& rightSelection,
+      std::size_t earlyExitThreshold) const
   {
-    std::uint32_t errorSum = 0;
+    float errorSum = 0.0f;
+
+    float intensityLeft = 0.0f;
+    float yIntensityLeft = 0.0f;
+    float xIntensityLeft = 0.0f;
+
+    float intensityRight = 0.0f;
+    float yIntensityRight = 0.0f;
+    float xIntensityRight = 0.0f;
 
     for (std::size_t y = 0; y < selectionSize; ++y)
     {
       for (std::size_t x = 0; x < selectionSize; ++x)
       {
-        errorSum += std::abs(
-            static_cast<int>(leftSelection.getPixel(x, y)) -
-            static_cast<int>(rightSelection.getPixel(x, y)));
+        const auto& leftPixel = leftSelection.getPixel(x, y);
+        intensityLeft += leftPixel;
+        yIntensityLeft += leftPixel * y;
+        xIntensityLeft += leftPixel * x;
+
+        const auto& rightPixel = rightSelection.getPixel(x, y);
+        intensityRight += rightPixel;
+        yIntensityRight += rightPixel * y;
+        xIntensityRight += rightPixel * x;
+      }
+    }
+
+    float distanceFromCenter = (selectionSize - 1) / 2.0f;
+
+    float centroidXLeft = xIntensityLeft / intensityLeft - distanceFromCenter;  // Opposite
+    float centroidYLeft = yIntensityLeft / intensityLeft - distanceFromCenter;  // Adjacent
+
+    float centroidXRight = xIntensityRight / intensityRight - distanceFromCenter;
+    float centroidYRight = yIntensityRight / intensityRight - distanceFromCenter;
+
+    float leftLength = std::hypot(centroidXLeft, centroidYLeft);
+    float rightLength = std::hypot(centroidXRight, centroidYRight);
+
+    float cosLeft = centroidXLeft / leftLength;
+    float cosRight = centroidXRight / rightLength;
+
+    float sinLeft = centroidYLeft / leftLength;
+    float sinRight = centroidYRight / rightLength;
+
+    float relativeCos = cosRight * cosLeft + sinRight * sinLeft;
+    float relativeSin = sinRight * cosLeft - cosRight * sinLeft;
+
+    int leftAverage = 0;
+    int leftMax = 1;
+    int rightAverage = 0;
+    int rightMax = 1;
+
+    for (std::size_t y = 0; y < selectionSize; ++y)
+    {
+      for (std::size_t x = 0; x < selectionSize; ++x)
+      {
+        const auto& leftPixel = leftSelection.getPixel(x, y);
+        const auto& rightPixel = rightSelection.getPixel(x, y);
+
+        leftAverage += leftPixel;
+        rightAverage += rightPixel;
+
+        if (leftPixel > leftMax) { leftMax = leftPixel; }
+        if (rightPixel > rightMax) { rightMax = rightPixel; }
+      }
+    }
+
+    leftAverage /= selectionSize * selectionSize;
+    rightAverage /= selectionSize * selectionSize;
+
+    for (std::size_t y = 0; y < selectionSize; ++y)
+    {
+      for (std::size_t x = 0; x < selectionSize; ++x)
+      {
+        const float centeredX = static_cast<float>(x) - distanceFromCenter;
+        const float centeredY = static_cast<float>(y) - distanceFromCenter;
+
+        // Rotate left coordinates into right-patch coordinates.
+        const float rotatedX =
+            distanceFromCenter + centeredX * relativeCos - centeredY * relativeSin;
+
+        const float rotatedY =
+            distanceFromCenter + centeredX * relativeSin + centeredY * relativeCos;
+
+        if (rotatedX < 0.0f || rotatedX >= selectionSize - 1 || rotatedY < 0.0f ||
+            rotatedY >= selectionSize - 1)
+        {
+          continue;
+        }
+
+        const std::size_t rightX = static_cast<std::size_t>(std::round(rotatedX));
+        const std::size_t rightY = static_cast<std::size_t>(std::round(rotatedY));
+
+        const int leftPixel = leftSelection.getPixel(x, y);
+        const int rightPixel = rightSelection.getPixel(rightX, rightY);
+
+        // errorSum += std::popcount(
+        //     static_cast<uint32_t>(leftPixel - leftAverage) ^ (rightPixel - rightAverage));
+
+        
+
+        errorSum += (std::abs(leftPixel - leftAverage - rightPixel + rightAverage) * 0.8f +
+                     0.2f * std::abs(leftPixel - rightPixel)) *
+                    ((1.0f - relativeCos) * 0.5f + 1.0f);
+
+        if (errorSum > earlyExitThreshold) { break; }
       }
     }
 
     return errorSum;
+  }
+
+  template <std::size_t selectionSize>
+  float getError(
+      const ImageView<selectionSize, selectionSize>& leftSelection,
+      const ImageView<selectionSize, selectionSize>& rightSelection,
+      std::size_t earlyExitThreshold) const
+  {
+    std::uint32_t errorSum = 0;
+
+    int leftAverage = 0;
+    int rightAverage = 0;
+
+    for (std::size_t y = 0; y < selectionSize; ++y)
+    {
+      for (std::size_t x = 0; x < selectionSize; ++x)
+      {
+        leftAverage += leftSelection.getPixel(x, y);
+        rightAverage += rightSelection.getPixel(x, y);
+      }
+    }
+
+    leftAverage /= selectionSize * selectionSize;
+    rightAverage /= selectionSize * selectionSize;
+
+    for (std::size_t y = 0; y < selectionSize; ++y)
+    {
+      for (std::size_t x = 0; x < selectionSize; ++x)
+      {
+        errorSum += (std::abs(
+            (static_cast<int>(leftSelection.getPixel(x, y)) - leftAverage) -
+            (static_cast<int>(rightSelection.getPixel(x, y)) - rightAverage)));
+
+        // errorSum += std::popcount(
+        //     (leftSelection.getPixel(x, y) - leftAverage) ^
+        //     (rightSelection.getPixel(x, y) - rightAverage));
+
+        if (errorSum >= earlyExitThreshold) { return static_cast<float>(errorSum); }
+      }
+    }
+
+    return static_cast<float>(errorSum);
   }
 };

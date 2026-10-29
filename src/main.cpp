@@ -4,7 +4,9 @@
 // #include <chrono>
 #include <chrono>
 #include <iostream>
+#include <sstream>
 #include <string>
+#include <vector>
 
 #include "display.hpp"
 #include "localize.hpp"
@@ -24,12 +26,14 @@ int main()
 {
   StereoCamera camera("/dev/video4", "/dev/video6");
   Display display;
+  auto leftFast = Image::create(camera.getWidth(), camera.getHeight());
+  auto rightFast = Image::create(camera.getWidth(), camera.getHeight());
 
-  unsigned long threshold = 10;
+  unsigned long fastThreshold = 80;
+  unsigned long errorThreshold = 8'000;
+  unsigned long consecutiveMatches = 4;
 
-  std::cout << "Enter a threshold value for FAST feature detection (or "
-               "'exit' to quit): "
-            << std::flush;
+  std::cout << "I-Cant-Code>" << std::flush;
 
   while (true)
   {
@@ -37,30 +41,67 @@ int main()
 
     if (tryReadLine(input))
     {
-      if (input == "exit") { return 0; }
+      std::istringstream iss(input);
+      std::vector<std::string> tokens;
+      std::string token;
+
+      while (std::getline(iss, token, ' ')) { tokens.push_back(token); }
 
       try
       {
-        threshold = std::stoul(input);
+        switch (tokens.size())
+        {
+          case 3:
+            std::cout << "Setting required consecutive matches to " << tokens[2] << ". ";
+            consecutiveMatches = std::stoul(tokens[2]);
+            [[fallthrough]];
+          case 2:
+            std::cout << "Setting error threshold to " << tokens[1] << ". ";
+            errorThreshold = std::stoul(tokens[1]);
+            [[fallthrough]];
+          case 1:
+            if (tokens[0] == "exit") { return 0; }
+            std::cout << "Setting fast threshold to " << tokens[0] << ". ";
+            fastThreshold = std::stoul(tokens[0]);
+            break;
+          case 0:
+            break;
+          default:
+            std::cout << "Extra Parameter Given, Skipped. ";
+            break;
+        }
       }
       catch (const std::invalid_argument&)
       {
-        std::cerr << "Threshold must be an unsigned integer.\n";
+        std::cerr << "Thresholds must be an unsigned integer.\n";
       }
       catch (const std::out_of_range&)
       {
-        std::cerr << "Threshold is too large.\n";
+        std::cerr << "Threshold(s) is/are too large.\n";
       }
 
-      std::cout << "Enter a threshold value for FAST feature detection (or "
-                   "'exit' to quit): "
-                << std::flush;
+      std::cout << "\nI-Cant-Code>" << std::flush;
     }
 
-    const auto& errorFrame = camera.getErrorFrame<5>(threshold, 10);
+    const auto& matches = camera.getMatches<5>(fastThreshold, consecutiveMatches, errorThreshold);
     if (!display.processEvents()) { return 0; }
 
-    display.show(errorFrame);
+    leftFast->clear();
+    rightFast->clear();
+
+    for (auto match : camera.getFeatureBuffers()[0])
+    {
+      (*leftFast)(match.getXOffset() + 32 / 2, match.getYOffset() + 32 / 2) = 255;
+    }
+    for (auto match : camera.getFeatureBuffers()[1])
+    {
+      (*rightFast)(match.getXOffset() + 32 / 2, match.getYOffset() + 32 / 2) = 255;
+    }
+
+    auto frames = camera.getFrames();
+
+    std::array<std::shared_ptr<Image>, 4> allFrames{frames[0], frames[1], leftFast, rightFast};
+    display.show(allFrames, matches, camera.getFeatureBuffers());
   }
   return 0;
 }
