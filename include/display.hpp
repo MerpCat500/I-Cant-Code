@@ -2,7 +2,7 @@
  * @file display.hpp
  * @author Andrew Hilton - andrew.hilton@usu.edu
  * @brief Displays a image buffer to the screen
- * @version 1.0 (@LastMod : 2026/10/28 16:23:54)
+ * @version 1.0 (@LastMod : 2026/10/29 11:40:38)
  * @date 2026-10-17
  *
  * @copyright Copyright (c) 2026
@@ -88,12 +88,8 @@ class Display
     }
   }
 
-  void drawDistance(float distance, int rightX, int rightY)
+  void drawText(const char* text, int rightX, int topY, SDL_Color color = {255, 255, 255, 255})
   {
-    char text[32];
-    std::snprintf(text, sizeof(text), "%.2fin", static_cast<double>(distance));
-
-    SDL_Color color{255, 255, 255, 255};
     SDL_Surface* surface = TTF_RenderText_Blended(font, text, color);
     if (!surface) { throw std::runtime_error(TTF_GetError()); }
 
@@ -105,10 +101,17 @@ class Display
       throw std::runtime_error(error);
     }
 
-    SDL_Rect destination{rightX + 32 - surface->w, rightY - surface->h - 2, surface->w, surface->h};
+    SDL_Rect destination{rightX - surface->w, topY, surface->w, surface->h};
     SDL_FreeSurface(surface);
     SDL_RenderCopy(renderer, texture, nullptr, &destination);
     SDL_DestroyTexture(texture);
+  }
+
+  void drawDistance(float distance, int rightX, int rightY)
+  {
+    char text[32];
+    std::snprintf(text, sizeof(text), "%.2fin", static_cast<double>(distance));
+    drawText(text, rightX + 32, rightY - TTF_FontHeight(font) - 2);
   }
 
   void limitFrameRate()
@@ -228,6 +231,20 @@ class Display
       SDL_RenderDrawRect(renderer, &leftSquare);
       SDL_RenderDrawRect(renderer, &rightSquare);
       drawDistance(match.getDistance(), rightX, rightY);
+    }
+
+    if (!matches.empty())
+    {
+      float totalDistance = 0.0f;
+      for (const auto& match : matches) { totalDistance += match.getDistance(); }
+
+      char averageText[32];
+      std::snprintf(
+          averageText,
+          sizeof(averageText),
+          "Avg: %.2fin",
+          static_cast<double>(totalDistance / static_cast<float>(matches.size())));
+      drawText(averageText, windowWidth - 8, 8, SDL_Color{255, 255, 0, 255});
     }
 
     SDL_SetRenderDrawColor(renderer, 0, 125, 255, 255);

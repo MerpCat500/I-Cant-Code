@@ -2,7 +2,7 @@
  * @file localize.hpp
  * @author Andrew Hilton - andrew.hilton@usu.edu
  * @brief Classes for localizing from cameras
- * @version 1.0 (@LastMod : 2026/10/29 11:20:33)
+ * @version 1.0 (@LastMod : 2026/10/29 11:33:20)
  * @date 2026-10-15
  *
  * @copyright Copyright (c) 2026
@@ -133,7 +133,8 @@ class StereoCamera
                   &rightFeature,
                   static_cast<float>(leftFeature.getXOffset()) - rightFeature.getXOffset()};
 
-              if (match.getDistance() > 0) workerMatches.push_back(match);
+              if (match.getDistance() > 0 && !std::isinf(match.getDistance()))
+                workerMatches.push_back(match);
             }
           }
         }
@@ -253,11 +254,16 @@ class StereoCamera
         // errorSum += std::popcount(
         //     static_cast<uint32_t>(leftPixel - leftAverage) ^ (rightPixel - rightAverage));
 
-        
+        errorSum +=
+            (std::abs(
+                 (leftPixel - leftAverage) / leftMax - (rightPixel + rightAverage) / rightMax) *
+                 1.0f +
+             0.0f * std::abs(leftPixel - rightPixel)) *
+            ((1.0f - relativeCos) * 0.5f + 1.0f);
 
-        errorSum += (std::abs(leftPixel - leftAverage - rightPixel + rightAverage) * 0.8f +
-                     0.2f * std::abs(leftPixel - rightPixel)) *
-                    ((1.0f - relativeCos) * 0.5f + 1.0f);
+        // errorSum += (std::abs(leftPixel - leftAverage - rightPixel + rightAverage) * 0.8f +
+        //              0.2f * std::abs(leftPixel - rightPixel)) *
+        //             ((1.0f - relativeCos) * 0.5f + 1.0f);
 
         if (errorSum > earlyExitThreshold) { break; }
       }

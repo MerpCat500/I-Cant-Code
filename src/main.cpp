@@ -30,8 +30,8 @@ int main()
   auto rightFast = Image::create(camera.getWidth(), camera.getHeight());
 
   unsigned long fastThreshold = 80;
-  unsigned long errorThreshold = 8'000;
-  unsigned long consecutiveMatches = 4;
+  unsigned long errorThreshold = 5'000;
+  unsigned long consecutiveMatches = 8;
 
   std::cout << "I-Cant-Code>" << std::flush;
 
