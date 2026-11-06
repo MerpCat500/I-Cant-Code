@@ -10,9 +10,31 @@
  */
 
 #pragma once
+#include <array>
+#include <cstddef>
 
-template <>
+template <typename T, std::size_t size>
 class Vector
 {
- private:
+    private:
+        std::array<T, size> m_values;
+
+    public:
+        Vector(std::array<T, size> values);
+
+        Vector add(const Vector& otherVector) const;
+        Vector sub(const Vector& otherVector) const;
+        Vector mul(const Vector& otherVector) const;
+        Vector div(const Vector& otherVector) const;
+
+        Vector operator+(const Vector& otherVector) const;
+        Vector operator-(const Vector& otherVector) const;
+        Vector operator*(const Vector& otherVector) const;
+        Vector operator/(const Vector& otherVector) const;
+
+        void operator+=(const Vector& otherVector);
+        void operator-=(const Vector& otherVector);
+        void operator*=(const Vector& otherVector);
+        void operator/=(const Vector& otherVector);
+
 };
