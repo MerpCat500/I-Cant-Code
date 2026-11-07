@@ -79,25 +79,72 @@ class Vector
 
         Vector mul(const T value) const
         {
+            std::array<T, size> newVals;
             
+            for (std::size_t i = 0; i < newVals.size(); i++)
+                newVals.at(i) = m_values.at(i) * value;
+            
+            return Vector(newVals);
         }
 
         Vector div(const T value) const
         {
-
+            std::array<T, size> newVals;
+            
+            for (std::size_t i = 0; i < newVals.size(); i++)
+                newVals.at(i) = m_values.at(i) / value;
+            
+            return Vector(newVals);
         }
 
-        Vector operator+(const Vector& otherVector) const;
-        Vector operator-(const Vector& otherVector) const;
-        Vector operator*(const Vector& otherVector) const;
-        Vector operator/(const Vector& otherVector) const;
+        Vector operator+(const Vector& otherVector) const
+        {
+            return this->add(otherVector);
+        }
 
-        void operator+=(const Vector& otherVector);
-        void operator-=(const Vector& otherVector);
-        void operator*=(const Vector& otherVector);
-        void operator/=(const Vector& otherVector);
+        Vector operator-(const Vector& otherVector) const
+        {
+            return this->sub(otherVector);
+        }
 
-        T dot(const Vector& otherVector) const;
+        Vector operator*(const T value) const
+        {
+            return this->mul(value);
+        }
+
+        Vector operator/(const T value) const
+        {
+            return this->div(value);
+        }
+
+        void operator+=(const Vector& otherVector)
+        {
+            (*this) = this->add(otherVector);
+        }
+
+        void operator-=(const Vector& otherVector)
+        {
+            (*this) = this->sub(otherVector);
+        }
+
+        void operator*=(const T value)
+        {
+            (*this) = this->mul(value);
+        }
+
+        void operator/=(const T value)
+        {
+            (*this) = this->div(value);
+        }
+
+        T dot(const Vector& otherVector) const
+        {
+            T productValue;
+
+            for (i : m_values)
+                
+        }
+
         Vector cross(const Vector& otherVector) const;
 
 
