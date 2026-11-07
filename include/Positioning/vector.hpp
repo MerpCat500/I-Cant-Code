@@ -27,18 +27,65 @@ class Vector
 
         T magnitude() const
         {
+            T magnitude = 0;
+            for (i : m_values)
+                magnitude += pow(i, 2);
+
+            magnitude = sqrt(magnitude);
+
+            return magnitude;
+        }
+
+        Vector normalize()
+        {
+            (*this) /= this->magnitude();
+            return (*this);
+        }
+
+        Vector normalized() const
+        {
+            return (*this) / this->magnitude;
+        }
+
+        T at(std::size_t index) const
+        {
+            return m_values.at(index);
+        }
+
+        T operator[](std::size_t index) const
+        {
+            return m_values.at(index);
+        }
+
+        Vector add(const Vector& otherVector) const
+        {
+            std::array<T, size> newVals;
+            
+            for (std::size_t i = 0; i < newVals.size(); i++)
+                newVals.at(i) = m_values.at(i) + otherVector[i];
+            
+            return Vector(newVals);
+        }
+
+        Vector sub(const Vector& otherVector) const
+        {
+            std::array<T, size> newVals;
+            
+            for (std::size_t i = 0; i < newVals.size(); i++)
+                newVals.at(i) = m_values.at(i) - otherVector[i];
+            
+            return Vector(newVals);
+        }
+
+        Vector mul(const T value) const
+        {
             
         }
 
-        Vector normalize();
-        Vector normalized() const;
+        Vector div(const T value) const
+        {
 
-        T operator[](std::size_t index);
-
-        Vector add(const Vector& otherVector) const;
-        Vector sub(const Vector& otherVector) const;
-        Vector mul(const Vector& otherVector) const;
-        Vector div(const Vector& otherVector) const;
+        }
 
         Vector operator+(const Vector& otherVector) const;
         Vector operator-(const Vector& otherVector) const;
