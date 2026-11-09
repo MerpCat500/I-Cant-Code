@@ -12,12 +12,15 @@
 #pragma once
 #include <array>
 #include <cstddef>
+#include <ostream>
+#include <cmath>
+#include <algorithm>
 
 template <typename T, std::size_t size>
 class Vector
 {
     private:
-        std::array<T, size> m_values;
+        std::array<T, size> m_values{};
 
     public:
 
@@ -25,11 +28,16 @@ class Vector
             : m_values(values)
         {}
 
+        Vector(std::initializer_list<T> list) 
+        {
+            std::copy_n(list.begin(), std::min(size, list.size()), m_values.begin());
+        }
+
         T magnitude() const
         {
             T magnitude = 0;
-            for (i : m_values)
-                magnitude += pow(i, 2);
+            for (T i : m_values)
+                magnitude += (i * i);
 
             magnitude = sqrt(magnitude);
 
@@ -44,7 +52,7 @@ class Vector
 
         Vector normalized() const
         {
-            return (*this) / this->magnitude;
+            return (*this) / this->magnitude();
         }
 
         T at(std::size_t index) const
@@ -55,6 +63,11 @@ class Vector
         T operator[](std::size_t index) const
         {
             return m_values.at(index);
+        }
+
+        std::size_t size() const
+        {
+            return m_values.size();
         }
 
         Vector add(const Vector& otherVector) const
@@ -139,15 +152,38 @@ class Vector
 
         T dot(const Vector& otherVector) const
         {
-            T productValue;
+            T productValue = 0;
 
-            for (i : m_values)
-                
+            for (std::size_t i = 0; i < m_values.size(); i++)
+                productValue += (m_values[i] * otherVector[i]);
+
+            return productValue;
         }
 
-        Vector cross(const Vector& otherVector) const;
+        Vector projected(const Vector& otherVector) const
+        {
+            T coefficient = (this->dot(otherVector)) / (otherVector.dot(otherVector));
 
+            return (otherVector * coefficient);
+        }
+
+        Vector project(const Vector& otherVector)
+        {
+            (*this) = this->projected(otherVector);
+            return (*this);
+        }
 
         friend std::ostream& operator<<(std::ostream& os, const Vector& v)
+        {
+            for (std::size_t i = 0; i < v.size(); i++)
+            {
+                os << v[i];
+
+                if (i != (v.size() - 1))
+                    os << ", ";
+            }
+
+            return os;
+        }
 
 };
