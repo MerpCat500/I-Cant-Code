@@ -15,6 +15,7 @@
 #include <ostream>
 #include <cmath>
 #include <algorithm>
+#include <initializer_list>
 
 template <typename T, std::size_t size>
 class Vector
@@ -23,6 +24,8 @@ class Vector
         std::array<T, size> m_values{};
 
     public:
+
+        Vector() = default;
 
         Vector(std::array<T, size> values)
             : m_values(values)
@@ -44,7 +47,7 @@ class Vector
             return magnitude;
         }
 
-        Vector normalize()
+        Vector& normalize()
         {
             (*this) /= this->magnitude();
             return (*this);
@@ -65,7 +68,17 @@ class Vector
             return m_values.at(index);
         }
 
-        std::size_t size() const
+        void set(std::size_t index, T value)
+        {
+            m_values.at(index) = value;
+        }
+
+        T& operator[](std::size_t index)
+        {
+            return m_values.at(index);
+        }
+
+        std::size_t dimension() const
         {
             return m_values.size();
         }
@@ -102,6 +115,9 @@ class Vector
 
         Vector div(const T value) const
         {
+            if (value == 0)
+                return Vector();
+
             std::array<T, size> newVals;
             
             for (std::size_t i = 0; i < newVals.size(); i++)
@@ -162,12 +178,16 @@ class Vector
 
         Vector projected(const Vector& otherVector) const
         {
+            if (otherVector.dot(otherVector) == 0)
+                return Vector();
+
+            
             T coefficient = (this->dot(otherVector)) / (otherVector.dot(otherVector));
 
             return (otherVector * coefficient);
         }
 
-        Vector project(const Vector& otherVector)
+        Vector& project(const Vector& otherVector)
         {
             (*this) = this->projected(otherVector);
             return (*this);
@@ -175,15 +195,20 @@ class Vector
 
         friend std::ostream& operator<<(std::ostream& os, const Vector& v)
         {
-            for (std::size_t i = 0; i < v.size(); i++)
+            for (std::size_t i = 0; i < v.dimension(); i++)
             {
                 os << v[i];
 
-                if (i != (v.size() - 1))
+                if (i != (v.dimension() - 1))
                     os << ", ";
             }
 
             return os;
+        }
+
+        friend Vector operator*(const T value, const Vector& v)
+        {
+            return v * value;
         }
 
 };
