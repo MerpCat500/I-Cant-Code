@@ -17,7 +17,7 @@
 template <typename T>
 class Quaternion
 {
-    private:
+    public:
 
         T w, x, y, z;
 
@@ -36,8 +36,14 @@ class Quaternion
             z = std::sin(angle.getTheta()) * axis.at(2);
         }
 
-        Quaternion operator*(Quaternion otherQuaternion){
+        Quaternion operator*(Quaternion q){
+            Quaternion newQuat(0, 0, 0, 0);
+            newQuat.w = (w * q.w) - (x * q.x) - (y * q.y) - (z * q.z);
+            newQuat.x = (w * q.x) + (x * q.w) + (y * q.z) - (z * q.y);
+            newQuat.y = (w * q.y) - (x * q.z) + (y * q.w) + (z * q.x);
+            newQuat.z = (w * q.z) + (x * q.y) - (y * q.x) + (z * q.w);
 
+            return newQuat;
         }
 
 };

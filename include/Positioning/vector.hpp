@@ -212,4 +212,9 @@ class Vector
             return v * value;
         }
 
+        friend Vector<T, 3> cross(Vector& otherVector)
+        {
+            
+        }
+
 };
